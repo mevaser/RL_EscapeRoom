@@ -59,8 +59,8 @@ class RLEscapeRoom:
             self.room = DQNRoom()
             self.renderer = GridWorldRenderer(background_path="assets/images/room4_background.jpg")
             self.training = True
-            print("\nTraining DQN agent for 1000 episodes...")
-            self.room.train(num_episodes=1000)
+            print("\nTraining DQN agent for 2000 episodes...")
+            self.room.train(num_episodes=2000)
             self.room.plot_training_progress()
             self.room.plot_q_values()
             self.room.plot_policy()

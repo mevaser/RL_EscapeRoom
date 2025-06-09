@@ -53,8 +53,8 @@ class DQNRoom(GridWorldEnv):
         self.batch_size = 64
         self.gamma = 0.99
         self.epsilon = 1.0
-        self.epsilon_min = 0.01
-        self.epsilon_decay = 0.995
+        self.epsilon_min = 0.05
+        self.epsilon_decay = 0.9975
         self.learning_rate = 0.001
         self.tau = 0.001
 
@@ -90,17 +90,21 @@ class DQNRoom(GridWorldEnv):
         self.add_special_tile('goal', (9, 9))
 
     def initialize_moving_cars(self):
+        fixed_positions = [(1, 1), (8, 8)]
+        self.moving_cars = [{"origin": pos, "position": pos} for pos in fixed_positions]
+
         invalid_positions = (
             self.special_tiles['obstacles'] |
             self.special_tiles['goal'] |
             self.special_tiles['prison'] |
-            self.special_tiles['slippery']
+            self.special_tiles['slippery'] |
+            set(fixed_positions)
         )
+
         valid_positions = [(x, y) for x in range(self.size) for y in range(self.size) if (x, y) not in invalid_positions]
         np.random.shuffle(valid_positions)
 
-        self.moving_cars = []
-        for i in range(7):
+        for i in range(3):
             pos = valid_positions[i]
             self.moving_cars.append({"origin": pos, "position": pos})
 
@@ -109,12 +113,10 @@ class DQNRoom(GridWorldEnv):
                         self.special_tiles['goal'] |
                         self.special_tiles['prison'] |
                         self.special_tiles['slippery'])
-
         occupied_positions = set(car['position'] for car in self.moving_cars)
 
         for car in self.moving_cars:
             origin = car['origin']
-
             if car['position'] != origin:
                 occupied_positions.discard(car['position'])
                 car['position'] = origin
@@ -123,26 +125,16 @@ class DQNRoom(GridWorldEnv):
 
             possible_moves = [(1,0), (-1,0), (0,1), (0,-1)]
             random.shuffle(possible_moves)
-
-            moved = False
             for dx, dy in possible_moves:
                 new_pos = (origin[0] + dx, origin[1] + dy)
-
                 if not (0 <= new_pos[0] < self.size and 0 <= new_pos[1] < self.size):
                     continue
-
                 if new_pos in blocked_tiles or new_pos in occupied_positions:
                     continue
-
                 occupied_positions.discard(car['position'])
                 car['position'] = new_pos
                 occupied_positions.add(new_pos)
-                moved = True
                 break
-
-            if not moved:
-                pass
-
 
     def reset(self, seed=None, options=None):
         obs, info = super().reset(seed=seed, options=options)
@@ -151,13 +143,24 @@ class DQNRoom(GridWorldEnv):
     def step(self, action: int):
         self.update_moving_cars()
         obs, reward, terminated, info = super().step(action)
+
         if tuple(obs) in [car["position"] for car in self.moving_cars]:
             reward = -10.0
             terminated = True
+
+        if self.special_tiles['goal']:
+            goal = list(self.special_tiles['goal'])[0]
+            distance = np.linalg.norm(np.array(self.agent_position) - np.array(goal))
+            reward += -0.03 * distance
+
         return obs, reward, terminated, info
 
+    def normalize_state(self, state):
+        return np.array(state) / (self.size - 1)
+
     def get_state_tensor(self, state):
-        return torch.FloatTensor(state).unsqueeze(0)
+        normalized = self.normalize_state(state)
+        return torch.FloatTensor(normalized).unsqueeze(0)
 
     def get_action(self, state, training: bool = True) -> int:
         if training and random.random() < self.epsilon:
@@ -197,7 +200,12 @@ class DQNRoom(GridWorldEnv):
             next_state = tuple(next_obs)
             done = terminated
             total_reward += reward
-            self.memory.add(np.array(state), action, reward, np.array(next_state), done)
+            self.memory.add(
+                self.normalize_state(state), 
+                action, 
+                reward, 
+                self.normalize_state(next_state), 
+                done)
             self.train_step()
             state = next_state
             self.steps_done += 1
@@ -205,15 +213,16 @@ class DQNRoom(GridWorldEnv):
         self.current_episode += 1
         return total_reward
 
-    def train(self, num_episodes: int = 1000):
+    def train(self, num_episodes: int = 2000):
         for _ in range(num_episodes):
             self.train_episode()
 
-
     def plot_training_progress(self):
         plt.figure(figsize=(10, 5))
-        plt.plot(self.episode_rewards)
-        plt.title('Training Progress')
+        rewards = np.array(self.episode_rewards)
+        smoothed = np.convolve(rewards, np.ones(50)/50, mode='valid')
+        plt.plot(smoothed)
+        plt.title('Training Progress (Smoothed)')
         plt.xlabel('Episode')
         plt.ylabel('Total Reward')
         plt.show()
