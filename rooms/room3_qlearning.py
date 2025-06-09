@@ -9,7 +9,8 @@ class QLearningRoom(GridWorldEnv):
     Room 3: Q-Learning with shapes task (collect shapes in order)
     """
 
-    def __init__(self, size: int = 10):
+    def __init__(self, size: int = 10, alpha: float = 0.1, gamma: float = 0.99, epsilon: float = 0.1,
+             epsilon_decay: float = 0.995, min_epsilon: float = 0.01):
         super().__init__(size=size)
 
         self.goal_position = (9, 9)
@@ -29,10 +30,11 @@ class QLearningRoom(GridWorldEnv):
 
         self._setup_room()
 
-        self.alpha = 0.1
-        self.gamma = 0.99
-        self.epsilon = 0.1
-
+        self.alpha = alpha
+        self.gamma = gamma
+        self.epsilon = epsilon
+        self.epsilon_decay = epsilon_decay
+        self.min_epsilon = min_epsilon
         self.Q = {(x, y, stage): np.zeros(4) for x in range(size) for y in range(size) for stage in range(4)}
         self.episode_rewards = []
         self.current_episode = 0
@@ -129,6 +131,9 @@ class QLearningRoom(GridWorldEnv):
 
         self.episode_rewards.append(total_reward)
         self.current_episode += 1
+        # Update epsilon after each episode
+        self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
+
         return total_reward
 
     def train(self, num_episodes: int = 1500):

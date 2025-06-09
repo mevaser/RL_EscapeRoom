@@ -44,19 +44,21 @@ class ReplayBuffer:
         return len(self.buffer)
 
 class DQNRoom(GridWorldEnv):
-    def __init__(self, size: int = 10):
+    def __init__(self, size: int = 10, learning_rate: float = 0.001, gamma: float = 0.99, epsilon: float = 1.0,
+                epsilon_decay: float = 0.995, min_epsilon: float = 0.01, batch_size: int = 64,
+                tau: float = 0.001, hidden_size: int = 64):
         super().__init__(size=size)
         self._setup_room()
         self.state_size = 2
         self.action_size = 4
-        self.hidden_size = 64
-        self.batch_size = 64
-        self.gamma = 0.99
-        self.epsilon = 1.0
-        self.epsilon_min = 0.05
-        self.epsilon_decay = 0.9975
-        self.learning_rate = 0.001
-        self.tau = 0.001
+        self.hidden_size = hidden_size
+        self.batch_size = batch_size
+        self.gamma = gamma
+        self.epsilon = epsilon
+        self.epsilon_min = min_epsilon
+        self.epsilon_decay = epsilon_decay
+        self.learning_rate = learning_rate
+        self.tau = tau
 
         self.qnetwork_local = QNetwork(self.state_size, self.action_size, self.hidden_size)
         self.qnetwork_target = QNetwork(self.state_size, self.action_size, self.hidden_size)

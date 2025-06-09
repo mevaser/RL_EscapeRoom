@@ -7,27 +7,24 @@ class SARSARoom(GridWorldEnv):
     """
     Room 2: SARSA (On-policy) implementation - WALL-E Charging Room
     """
-    def __init__(self, size: int = 10):
+    def __init__(self, size: int = 10, alpha: float = 0.1, gamma: float = 0.99, epsilon: float = 0.1):
         super().__init__(size=size)
-        
-        # Set goal position for stability
-        self.goal_position = (9, 9)
 
+        self.goal_position = (9, 9)
         self._setup_room()
 
-        # Add charging cells (WALL-E batteries)
         self.fixed_charging_cells = {(3, 3), (6, 6)}
         self.charging_cells = set()
         self._place_charging_cells()
 
-        # SARSA parameters
-        self.alpha = 0.1
-        self.gamma = 0.99
-        self.epsilon = 0.1
-        
+        self.alpha = alpha
+        self.gamma = gamma
+        self.epsilon = epsilon
+
         self.Q = {(x, y): np.zeros(4) for x in range(size) for y in range(size)}
         self.episode_rewards = []
         self.current_episode = 0
+
     
     def _setup_room(self):
         for x in [2, 3, 4, 5]:

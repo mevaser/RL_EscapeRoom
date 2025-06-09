@@ -7,11 +7,14 @@ class DPRoom(GridWorldEnv):
     """
     Room 1: Dynamic Programming implementation using Value Iteration with snitch collection
     """
-    def __init__(self, size: int = 10):
+    def __init__(self, size: int = 10, gamma: float = 0.99, theta: float = 1e-6):
         super().__init__(size=size)
         self._setup_room()
-        self.gamma = 0.99
-        self.theta = 1e-6
+        self.gamma = gamma
+        self.theta = theta
+        self.V = np.zeros((size, size, 1 << self.num_snitches))
+        self.policy = np.zeros((size, size, 1 << self.num_snitches), dtype=int)
+
 
     def _setup_room(self):
         # Obstacles
@@ -116,3 +119,31 @@ class DPRoom(GridWorldEnv):
         plt.colorbar(label='Value')
         plt.title('Value Function (initial state)')
         plt.show()
+
+    def plot_policy(self):
+        plt.figure(figsize=(8, 8))
+
+        X, Y = np.meshgrid(np.arange(self.size), np.arange(self.size))
+        U = np.zeros((self.size, self.size))
+        V = np.zeros((self.size, self.size))
+
+        for x in range(self.size):
+            for y in range(self.size):
+                if (x, y) in self.special_tiles['obstacles']:
+                    continue
+
+                action = self.policy[x, y, 0]  # נציג policy עבור mask=0 (התחלה)
+
+                if action == 0:    # LEFT
+                    U[x, y] = -1
+                elif action == 1:  # RIGHT
+                    U[x, y] = 1
+                elif action == 2:  # UP
+                    V[x, y] = 1
+                else:              # DOWN
+                    V[x, y] = -1
+
+        plt.quiver(X, Y, U.T, V.T)
+        plt.title('Policy (initial mask state)')
+        plt.show()
+

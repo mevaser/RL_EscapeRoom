@@ -7,6 +7,13 @@ from rooms.room3_qlearning import QLearningRoom
 from rooms.room4_dqn import DQNRoom
 from environment.renderer import GridWorldRenderer
 from environment.renderer3_math import GridWorldRenderer as MathRenderer
+from utils.parameter_dialogs import get_dp_params
+from utils.parameter_dialogs import get_sarsa_params
+from utils.parameter_dialogs import get_qlearning_params
+from utils.parameter_dialogs import get_dqn_params
+
+
+
 
 class RLEscapeRoom:
     def __init__(self):
@@ -24,15 +31,26 @@ class RLEscapeRoom:
 
         if self.current_room == 1:
             print("Room 1 - Dynamic Programming (Quidditch)")
-            self.room = DPRoom()
+
+            # קבלת פרמטרים מהמשתמש
+            gamma, theta = get_dp_params()
+
+            # יצירת החדר עם הפרמטרים שהמשתמש הזין
+            self.room = DPRoom(gamma=gamma, theta=theta)
+            
+            # שמירה על הרקע כמו שהיה
             self.renderer = GridWorldRenderer(background_path="assets/images/room1_background.jpg")
+
             self.room.value_iteration()
             self.room.plot_value_function()
+            self.room.plot_policy()
             print("Policy calculated! Press SPACE to see the agent move.")
+
 
         elif self.current_room == 2:
             print("Room 2 - SARSA (WALL-E Charging Room)")
-            self.room = SARSARoom()
+            alpha, gamma, epsilon = get_sarsa_params()
+            self.room = SARSARoom(alpha=alpha, gamma=gamma, epsilon=epsilon)
             self.renderer = GridWorldRenderer(background_path="assets/images/room2_background.jpg")
             self.training = True
             print("\nTraining SARSA agent for 1000 episodes...")
@@ -43,9 +61,11 @@ class RLEscapeRoom:
             self.training = False
             print("Training complete! Press SPACE to see the agent move.")
 
+
         elif self.current_room == 3:
-            print("Room 3 - Q-Learning (Math Room)")
-            self.room = QLearningRoom()
+            alpha, gamma, epsilon, epsilon_decay, min_epsilon = get_qlearning_params()
+            self.room = QLearningRoom(alpha=alpha, gamma=gamma, epsilon=epsilon,
+                                    epsilon_decay=epsilon_decay, min_epsilon=min_epsilon)
             self.renderer = MathRenderer(background_path="assets/images/room3_background.jpg")
             self.training = True
             print("\nTraining Q-Learning agent for 1000 episodes...")
@@ -54,9 +74,24 @@ class RLEscapeRoom:
             self.training = False
             print("Training complete! Press SPACE to see the agent move.")
 
+
         elif self.current_room == 4:
             print("Room 4 - DQN")
-            self.room = DQNRoom()
+
+            (learning_rate, gamma, epsilon, epsilon_decay, min_epsilon,
+            batch_size, tau, hidden_size) = get_dqn_params()
+
+            self.room = DQNRoom(
+                learning_rate=learning_rate,
+                gamma=gamma,
+                epsilon=epsilon,
+                epsilon_decay=epsilon_decay,
+                min_epsilon=min_epsilon,
+                batch_size=batch_size,
+                tau=tau,
+                hidden_size=hidden_size
+            )
+
             self.renderer = GridWorldRenderer(background_path="assets/images/room4_background.jpg")
             self.training = True
             print("\nTraining DQN agent for 2000 episodes...")
@@ -66,6 +101,7 @@ class RLEscapeRoom:
             self.room.plot_policy()
             self.training = False
             print("Training complete! Press SPACE to see the agent move.")
+
 
         self.room.reset()
         self.snitch_mask = 0
