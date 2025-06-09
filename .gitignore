@@ -1,0 +1,16 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environments
+.env/
+venv/
+.venv/
+
+# System files
+.DS_Store
+
+# Archives
+*.zip
