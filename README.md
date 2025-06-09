@@ -1,87 +1,193 @@
-# 🤖 Reinforcement Learning Escape Room
 
-An interactive GridWorld-based escape room simulation featuring four rooms, each implementing a different Reinforcement Learning algorithm.
+# 🎮 Reinforcement Learning Escape Room
 
-## 🌟 Project Overview
+An interactive multi-room GridWorld simulation showcasing Reinforcement Learning algorithms across four unique challenges. Each room represents a different RL paradigm, combined with puzzle-inspired mechanics and visuals from classic games and movies.
 
-This project implements a unique escape room experience where each room represents a different Reinforcement Learning challenge:
+---
 
-1. **Room 1**: Dynamic Programming (Policy/Value Iteration)
-2. **Room 2**: SARSA (On-policy Learning)
-3. **Room 3**: Q-Learning (Off-policy Learning)
-4. **Room 4**: Deep Q-Network (DQN)
+## 🚀 Project Overview
 
-Each room is a 10x10 grid environment with various features like slippery tiles, prison cells, and obstacles.
+The **RL Escape Room** is a modular learning environment where an agent progresses through four rooms, each designed with different RL algorithms and increasingly complex tasks:
 
-## 🚀 Setup and Installation
+| Room | Algorithm | Theme | Special Feature |
+| ---- | --------- | ----- | ---------------- |
+| 1 | **Dynamic Programming (Value Iteration)** | Harry Potter | Snitch collection with state masks |
+| 2 | **SARSA (On-Policy Learning)** | WALL-E | Random charging cell placement |
+| 3 | **Q-Learning (Off-Policy Learning)** | Squid Game | Sequential shape collection (circle → square → triangle) |
+| 4 | **Deep Q-Network (DQN)** | Rush Hour (Driving Cars) | Moving obstacles with path planning |
 
-1. Clone this repository
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Run the game:
-   ```bash
-   python main.py
-   ```
+The entire simulation is built with Python using `pygame`, `gymnasium`, and `PyTorch`.
 
-## 🎮 Game Features
+---
 
-- Interactive 10x10 GridWorld environment
-- Visual representation of agent actions
-- Real-time display of Q-tables and rewards
-- Customizable learning parameters (α, γ, ε)
-- Progress tracking between rooms
-- Training and episode management system
+## 🧠 Key Concepts Demonstrated
+
+- GridWorld-based RL environment
+- Dynamic state-dependent reward systems
+- Complex environment features: slippery tiles, prison tiles, dynamic obstacles
+- Visualization of training, policies, and Q-values
+- Parameter tuning via Tkinter-based GUI before each training
+- Fully interactive gameplay after training
+
+---
 
 ## 🏗️ Project Structure
 
-- `main.py` - Main game entry point
-- `environment/` - Core environment implementation
-  - `grid_world.py` - Base GridWorld environment
-  - `renderer.py` - Visual rendering utilities
-- `rooms/` - Individual room implementations
-  - `room1_dp.py` - Dynamic Programming room
-  - `room2_sarsa.py` - SARSA room
-  - `room3_qlearning.py` - Q-Learning room
-  - `room4_dqn.py` - Deep Q-Network room
-- `utils/` - Utility functions and helpers
+```
+.
+├── main.py               # Main game loop and room manager
+├── requirements.txt      # Dependencies
+├── rooms/                # Each RL room logic
+│   ├── room1_dp.py
+│   ├── room2_sarsa.py
+│   ├── room3_qlearning.py
+│   └── room4_dqn.py
+├── environment/
+│   ├── grid_world.py     # Base GridWorld logic
+│   ├── renderer.py       # Renderer for rooms 1,2,4
+│   └── renderer3_math.py # Special renderer for math-based shapes (room 3)
+├── utils/
+│   └── parameter_dialogs.py  # Tkinter parameter input dialogs
+└── assets/images/        # All visual assets per room
+```
 
-## 🎯 Room Details
+---
 
-### Room 1 - Dynamic Programming
-- Known model (transition + reward)
-- Policy/Value Iteration implementation
-- Features: Slippery tiles, prison cells
+## 📦 Installation
 
-### Room 2 - SARSA
-- Unknown model
-- On-policy learning
-- ε-greedy exploration
-- Features: Slippery tiles, prison cells
+1️⃣ Clone this repository:
 
-### Room 3 - Q-Learning
-- Unknown model
-- Off-policy learning
-- Optimal policy convergence
-- Features: Slippery tiles, prison cells
+```bash
+git clone <your-repo-url>
+cd rl-escape-room
+```
 
-### Room 4 - Deep Q-Network
-- Neural network Q-value approximation
-- Experience replay buffer
-- Target network implementation
-- Features: Slippery tiles, prison cells
+2️⃣ Install dependencies:
 
-## 🎛️ Parameters
+```bash
+pip install -r requirements.txt
+```
 
-Each algorithm's parameters can be adjusted:
-- Learning rate (α)
-- Discount factor (γ)
-- Exploration rate (ε)
+✅ Required packages:
 
-## 📊 Visualization
+- numpy
+- pygame
+- matplotlib
+- torch
+- gymnasium
 
-- Real-time display of agent's actions
-- Q-table/policy visualization
-- Cumulative reward plotting
-- Training progress monitoring 
+See `requirements.txt` for exact versions.
+
+---
+
+## 🎮 Running the Simulation
+
+Simply execute:
+
+```bash
+python main.py
+```
+
+You'll be guided room-by-room.
+
+✅ Before entering each room, you’ll be prompted to enter RL hyperparameters via a user-friendly Tkinter GUI.
+
+✅ Once training completes, you control the agent interactively to test the learned policy.
+
+---
+
+## 🏰 Room Descriptions
+
+### Room 1: **Dynamic Programming (Harry Potter - Snitch Puzzle)**
+
+- Collect all snitches using Value Iteration.
+- Full state space includes a bitmask for snitch collection state.
+- Optimal policy is precomputed (model-based).
+- Obstacles, slippery tiles and prison tiles included.
+
+### Room 2: **SARSA (WALL-E Charging Room)**
+
+- Agent must collect random charging cells before reaching goal.
+- Charging cells are re-randomized every reset.
+- Fully on-policy learning using SARSA updates.
+- Adaptive exploration during training.
+
+### Room 3: **Q-Learning (Squid Game - Shape Puzzle)**
+
+- Sequential object collection task (circle → square → triangle).
+- Q-table includes extended state (current stage).
+- Off-policy learning enables faster convergence.
+- Shape-based penalties for wrong order collection.
+
+### Room 4: **Deep Q-Network (Rush Hour Driving Cars Puzzle)**
+
+- Moving car obstacles inspired by Rush Hour board game.
+- Neural network approximation of Q-values using PyTorch.
+- Replay buffer, target networks and soft updates (DQN architecture).
+- Smooth difficulty increase via dynamic cars path.
+
+---
+
+## 🎯 Sample Screenshots
+
+| Harry Potter (Room 1) | WALL-E (Room 2) | Squid Game (Room 3) | Rush Hour (Room 4) |
+| ---- | ---- | ---- | ---- |
+| ![](assets/images/harry_potter.png) | ![](assets/images/battery.jpg) | ![](assets/images/shapes.png) | ![](assets/images/rush_hour.png) |
+
+*(Replace with your actual screenshots based on the images you provided)*
+
+---
+
+## 🧪 Training Visualization
+
+- 📈 Training curves (episode reward)
+- 📊 Policy heatmaps
+- 📉 Epsilon decay graphs
+- 🧭 Policy arrows visualization
+
+---
+
+## 🛠 Features Summary
+
+- Fully interactive environment
+- Tkinter-based parameter configuration before each training
+- Dynamic difficulty via randomized layouts
+- Smooth transitions between rooms
+- End-of-room popups and full game completion message
+- GPU compatible (for DQN training)
+
+---
+
+## ⚠️ Known Limitations
+
+- All rooms run sequentially; no save/load checkpoints.
+- `pygame` rendering loop requires display access.
+- DQN training speed may vary based on hardware.
+
+---
+
+## 💡 Educational Goals
+
+This project is designed to help students and practitioners:
+
+- Understand the difference between model-based and model-free RL
+- Gain intuition for on-policy vs. off-policy methods
+- Implement full RL pipelines (train → evaluate → visualize → deploy)
+- Tackle increasingly complex reward structures
+- Combine game design with AI training flows
+
+---
+
+## 🙏 Credits
+
+- Inspired by famous games and movies:  
+  *Harry Potter, WALL-E, Squid Game, Rush Hour*
+
+- Developed as part of a reinforcement learning educational showcase.
+
+---
+
+## 📝 License
+
+Open for educational and non-commercial use.  
+Feel free to fork, adapt and extend!
