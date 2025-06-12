@@ -15,6 +15,7 @@ class SARSARoom(GridWorldEnv):
 
         self.fixed_charging_cells = {(3, 3), (6, 6)}
         self.charging_cells = set()
+        self.collected_batteries = set()
         self._place_charging_cells()
 
         self.alpha = alpha
@@ -91,6 +92,7 @@ class SARSARoom(GridWorldEnv):
         for _ in range(num_episodes):
             self.train_episode()
 
+
     def step(self, action: int):
         obs, reward, terminated, info = super().step(action)
         position = tuple(obs)
@@ -98,14 +100,15 @@ class SARSARoom(GridWorldEnv):
         if position in self.charging_cells:
             reward += 5  
             self.charging_cells.remove(position)
-
-        # ⚠ no extra goal reward or termination here — super() already handles it.
+            self.collected_batteries.add(position)  # ✅ ספירה של סוללה
 
         return obs, reward, terminated, info
+
 
     def reset(self, seed=None, options=None):
         obs, info = super().reset(seed=seed, options=options)
         self._place_charging_cells()
+        self.collected_batteries.clear() 
         return obs, info
 
     def plot_training_progress(self):
@@ -125,7 +128,7 @@ class SARSARoom(GridWorldEnv):
                     value_matrix[x, y] = float('nan')
                 else:
                     value_matrix[x, y] = np.max(self.Q[(x, y)])
-        plt.imshow(value_matrix.T, origin='lower')
+        plt.imshow(value_matrix.T, origin='upper')  
         plt.colorbar(label='Max Q-Value')
         plt.title('Q-Value Function')
         plt.show()
@@ -145,6 +148,7 @@ class SARSARoom(GridWorldEnv):
                 elif action == 2: V[x, y] = 1
                 else: V[x, y] = -1
 
-        plt.quiver(X, Y, U.T, V.T)
+        plt.quiver(X, Y, U.T, -V.T)
+        plt.gca().invert_yaxis()
         plt.title('Learned Policy')
         plt.show()

@@ -115,7 +115,7 @@ class DPRoom(GridWorldEnv):
     def plot_value_function(self):
         plt.figure(figsize=(8, 8))
         # נציג את value בפורמט mask אפס (בהתחלה)
-        plt.imshow(self.V[:, :, 0].T, origin='lower')
+        plt.imshow(self.V[:, :, 0].T, origin='upper')
         plt.colorbar(label='Value')
         plt.title('Value Function (initial state)')
         plt.show()
@@ -143,7 +143,8 @@ class DPRoom(GridWorldEnv):
                 else:              # DOWN
                     V[x, y] = -1
 
-        plt.quiver(X, Y, U.T, V.T)
+        plt.quiver(X, Y, U.T, -V.T)
+        plt.gca().invert_yaxis() 
         plt.title('Policy (initial mask state)')
         plt.show()
 

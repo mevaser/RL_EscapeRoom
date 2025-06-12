@@ -89,12 +89,20 @@ class GridWorldRenderer:
                         (pos[0] * self.cell_size, pos[1] * self.cell_size)
                     )
                 else:
-                    color = self.colors.get(tile_type, self.colors['grid'])
-                    pygame.draw.rect(
-                        self.window,
-                        color,
-                        (pos[0] * self.cell_size, pos[1] * self.cell_size, self.cell_size, self.cell_size)
-                    )
+                    normalized_tile_type = tile_type.rstrip("s")  # מסיר s מסוף מילה
+                    color = self.colors.get(normalized_tile_type, self.colors['grid'])
+
+                    if normalized_tile_type in ['goal', 'obstacle', 'slippery', 'prison']:
+
+                        surface = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
+                        surface.fill((*color, 150))  # 150/255 = שקיפות חלקית
+                        self.window.blit(surface, (pos[0] * self.cell_size, pos[1] * self.cell_size))
+                    else:
+                        pygame.draw.rect(
+                            self.window,
+                            color,
+                            (pos[0] * self.cell_size, pos[1] * self.cell_size, self.cell_size, self.cell_size)
+                        )
 
         if charging_cells:
             for pos in charging_cells:
@@ -141,15 +149,15 @@ class GridWorldRenderer:
 
 
         if info:
-            overlay_width = 180
-            overlay_height = 120
+            overlay_width = 140
+            overlay_height = 90
             overlay_surface = pygame.Surface((overlay_width, overlay_height), pygame.SRCALPHA)
             overlay_surface.fill((255, 255, 255, 180))
             self.window.blit(overlay_surface, (10, 10))
 
             y_offset = 20
             for key, value in info.items():
-                if key not in ['snitch_collected', 'snitch_total']:
+                if key not in ['snitch_collected', 'snitch_total', 'Training']:
                     text = f"{key}: {value}"
                     text_surface = self.font.render(text, True, self.colors['text'])
                     self.window.blit(text_surface, (20, y_offset))

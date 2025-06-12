@@ -255,8 +255,18 @@ class RLEscapeRoom:
                         elif self.current_room == 3:
                             state = tuple(self.room.agent_position)
                             action = self.room.get_action(state, training=False)
+                        elif self.current_room == 4:
+                            self.room.steps = 0
+                            action = self.room.get_action_from_successful_trajectory()
+                            if action is None:
+                                print("Replay finished or not available.")
+                                continue  # דלג על הצעד – לא לעשות כלום
+
+
                         else:
                             action = self.room.get_action(self.room.agent_position, training=False)
+
+
 
                         obs, reward, terminated, info = self.room.step(action)
 
@@ -269,8 +279,10 @@ class RLEscapeRoom:
                                 idx = self.room.snitch_indices[pos]
                                 if not (self.snitch_mask & (1 << idx)):
                                     self.snitch_mask |= (1 << idx)
+                        
 
-                        if terminated:
+
+                        if terminated and (self.current_room != 4 or info.get("success") == True):
                             print("\nGoal reached! 🎉")
                             if self.current_room == self.total_rooms:
                                 self.show_game_completed_popup()
@@ -280,6 +292,7 @@ class RLEscapeRoom:
                                 self.current_room += 1
                                 self._setup_current_room()
                             continue
+
 
 
                     elif event.key == pygame.K_r:
@@ -297,13 +310,32 @@ class RLEscapeRoom:
                     info_dict.update({"snitch_collected": self.room.collected_snitch, "snitch_total": self.room.total_snitch})
 
                 if self.current_room == 2:
-                    self.renderer.render(self.room.agent_position, self.room.special_tiles, info=info_dict, charging_cells=self.room.charging_cells)
+                    info_dict["Batteries"] = len(self.room.collected_batteries)
+                    self.renderer.render(
+                        self.room.agent_position,
+                        self.room.special_tiles,
+                        info=info_dict,
+                        charging_cells=self.room.charging_cells
+                    )
+
+
                 elif self.current_room == 3:
                     task_text = "Squid Game Room: Collect Circle, then Square, then Triangle"
-                    self.renderer.render_with_shapes(self.room.agent_position, self.room.special_tiles, info=info_dict,
-                                                     shapes_positions=self.room.shapes_positions,
-                                                     collected_shapes=self.room.collected_shapes,
-                                                     current_task=task_text)
+                    
+                    # 💡 תעדכן את info_dict מראש לפני הקריאה:
+                    collected = len(self.room.collected_shapes)
+                    total = len(self.room.shapes_positions)
+                    info_dict["Shapes"] = f"{collected}/{total}"
+
+                    self.renderer.render_with_shapes(
+                        self.room.agent_position,
+                        self.room.special_tiles,
+                        info=info_dict,
+                        shapes_positions=self.room.shapes_positions,
+                        collected_shapes=self.room.collected_shapes,
+                        current_task="shapes"
+                    )
+
                 elif self.current_room == 4:
                     self.renderer.render(self.room.agent_position, self.room.special_tiles, info=info_dict, moving_cars=self.room.moving_cars)
                 else:

@@ -69,6 +69,9 @@ class DQNRoom(GridWorldEnv):
         self.episode_rewards = []
         self.current_episode = 0
         self.steps_done = 0
+        self.best_reward = float('-inf')
+        self.successful_trajectory = []
+
 
         self.moving_cars = []
         self.initialize_moving_cars()
@@ -92,7 +95,7 @@ class DQNRoom(GridWorldEnv):
         self.add_special_tile('goal', (9, 9))
 
     def initialize_moving_cars(self):
-        fixed_positions = [(1, 1), (8, 8)]
+        fixed_positions = [(1, 1), (1, 8)]
         self.moving_cars = [{"origin": pos, "position": pos} for pos in fixed_positions]
 
         invalid_positions = (
@@ -139,6 +142,7 @@ class DQNRoom(GridWorldEnv):
                 break
 
     def reset(self, seed=None, options=None):
+        self.steps = 0
         obs, info = super().reset(seed=seed, options=options)
         return obs, info
 
@@ -146,16 +150,29 @@ class DQNRoom(GridWorldEnv):
         self.update_moving_cars()
         obs, reward, terminated, info = super().step(action)
 
+        # אם התנגשות עם רכב
         if tuple(obs) in [car["position"] for car in self.moving_cars]:
             reward = -10.0
             terminated = True
+            info['success'] = False
+            return obs, reward, terminated, info
 
+        # קרבה למטרה מוסיפה עונש קטן
         if self.special_tiles['goal']:
             goal = list(self.special_tiles['goal'])[0]
             distance = np.linalg.norm(np.array(self.agent_position) - np.array(goal))
             reward += -0.03 * distance
 
+            # הצלחה רק אם באמת הגעת ל־goal
+            if tuple(obs) == goal:
+                reward += 20
+                terminated = True
+                info['success'] = True
+            else:
+                info['success'] = False
+
         return obs, reward, terminated, info
+
 
     def normalize_state(self, state):
         return np.array(state) / (self.size - 1)
@@ -196,28 +213,67 @@ class DQNRoom(GridWorldEnv):
         state = tuple(obs)
         total_reward = 0
         done = False
+        trajectory = []
+
         while not done:
             action = self.get_action(state, training=True)
+            cars_state = [car["position"] for car in self.moving_cars]
             next_obs, reward, terminated, info = self.step(action)
             next_state = tuple(next_obs)
             done = terminated
             total_reward += reward
+
+            # שמירת ניסיון
             self.memory.add(
                 self.normalize_state(state), 
                 action, 
                 reward, 
                 self.normalize_state(next_state), 
-                done)
+                done
+            )
+            trajectory.append({
+                "state": state,
+                "action": action,
+                "cars": cars_state
+            })
+
             self.train_step()
             state = next_state
             self.steps_done += 1
+
+        # שמור אם הצליח להגיע ל-goal וזו הריצה הכי טובה
+        if info.get("success", False) and total_reward > self.best_reward:
+            self.best_reward = total_reward
+            self.successful_trajectory = trajectory
+
         self.episode_rewards.append(total_reward)
         self.current_episode += 1
         return total_reward
 
+
     def train(self, num_episodes: int = 2000):
         for _ in range(num_episodes):
             self.train_episode()
+        
+        if self.successful_trajectory:
+            print(f"✅ Trajectory saved with {len(self.successful_trajectory)} steps")
+        else:
+            print("❌ No successful trajectory found")
+
+
+    def get_action_from_successful_trajectory(self):
+        if hasattr(self, "successful_trajectory") and self.steps < len(self.successful_trajectory):
+            step_data = self.successful_trajectory[self.steps]
+
+            # החזרת מיקומי המכוניות למצב שהיו בו בשלב הזה
+            for i, pos in enumerate(step_data["cars"]):
+                self.moving_cars[i]["position"] = pos
+
+            self.steps += 1  # ⬅️ חשוב מאוד!
+            return step_data["action"]
+        return None
+
+
 
     def plot_training_progress(self):
         plt.figure(figsize=(10, 5))
