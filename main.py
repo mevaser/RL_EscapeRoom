@@ -1,5 +1,6 @@
 import pygame
 import sys
+import random
 import numpy as np
 from rooms.room1_dp import DPRoom
 from rooms.room2_sarsa import SARSARoom
@@ -256,10 +257,8 @@ class RLEscapeRoom:
                             state = tuple(self.room.agent_position)
                             action = self.room.get_action(state, training=False)
                         elif self.current_room == 4:
-                            self.room.steps = 0
                             action = self.room.get_action_from_successful_trajectory()
                             if action is None:
-                                print("Replay finished or not available.")
                                 continue  # דלג על הצעד – לא לעשות כלום
 
 
@@ -336,8 +335,27 @@ class RLEscapeRoom:
                         current_task="shapes"
                     )
 
+
                 elif self.current_room == 4:
-                    self.renderer.render(self.room.agent_position, self.room.special_tiles, info=info_dict, moving_cars=self.room.moving_cars)
+                    if self.room.successful_trajectories and not hasattr(self.room, "current_replay_trajectory"):
+                        _, traj = random.choice(self.room.successful_trajectories)
+                        self.room.current_replay_trajectory = traj
+                        # 🎯 מיד אחרי בחירת האפיזודה - מיקום המכוניות במקום הנכון
+                        start_cars = traj[0]["cars"]
+                        for i, pos in enumerate(start_cars):
+                            if i < len(self.room.moving_cars):
+                                self.room.moving_cars[i]["position"] = pos
+                    # הסר את השורה הזו כי היא מיותרת עכשיו
+                    # self.room.restore_initial_replay_state()
+                    self.room.restore_initial_replay_state()
+
+                    self.renderer.render(
+                        self.room.agent_position,
+                        self.room.special_tiles,
+                        info=info_dict,
+                        moving_cars=self.room.moving_cars
+                    )
+
                 else:
                     self.renderer.render(self.room.agent_position, self.room.special_tiles, info=info_dict)
 

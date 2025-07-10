@@ -70,7 +70,9 @@ class DQNRoom(GridWorldEnv):
         self.current_episode = 0
         self.steps_done = 0
         self.best_reward = float('-inf')
-        self.successful_trajectory = []
+        self.successful_trajectories = []
+        self.replay_started = False
+
 
 
         self.moving_cars = []
@@ -143,6 +145,7 @@ class DQNRoom(GridWorldEnv):
 
     def reset(self, seed=None, options=None):
         self.steps = 0
+        self.replay_started = False
         obs, info = super().reset(seed=seed, options=options)
         return obs, info
 
@@ -164,14 +167,29 @@ class DQNRoom(GridWorldEnv):
             reward += -0.03 * distance
 
             # הצלחה רק אם באמת הגעת ל־goal
-            if tuple(obs) == goal:
+            if tuple(obs) in self.special_tiles['goal']:
                 reward += 20
                 terminated = True
                 info['success'] = True
+                print(f"🎯 Agent reached goal at position {tuple(obs)}!")
             else:
                 info['success'] = False
 
         return obs, reward, terminated, info
+    
+    def restore_initial_replay_state(self):
+        if not self.replay_started and hasattr(self, "current_replay_trajectory"):
+            # שחזור מיקום הסוכן
+            start_state = self.current_replay_trajectory[0]["state"]
+            self.agent_position = tuple(start_state)
+
+            # שחזור מיקומי רכבים
+            start_cars = self.current_replay_trajectory[0]["cars"]
+            for i, pos in enumerate(start_cars):
+                if i < len(self.moving_cars):
+                    self.moving_cars[i]["position"] = pos
+
+
 
 
     def normalize_state(self, state):
@@ -241,10 +259,13 @@ class DQNRoom(GridWorldEnv):
             state = next_state
             self.steps_done += 1
 
-        # שמור אם הצליח להגיע ל-goal וזו הריצה הכי טובה
-        if info.get("success", False) and total_reward > self.best_reward:
-            self.best_reward = total_reward
-            self.successful_trajectory = trajectory
+        # בדיקת הצלחה ושמירת מסלול מוצלח
+        moved_enough = all(trajectory[i]["state"] != trajectory[i + 1]["state"] for i in range(len(trajectory) - 1))
+        is_final_step_on_goal = tuple(state) in self.special_tiles['goal']
+        if info.get("success", False) and len(trajectory) >= 5 and moved_enough and is_final_step_on_goal:
+            self.successful_trajectories.append((total_reward, trajectory))
+            print(f"✅ Successful trajectory saved with reward: {total_reward}")
+
 
         self.episode_rewards.append(total_reward)
         self.current_episode += 1
@@ -255,23 +276,35 @@ class DQNRoom(GridWorldEnv):
         for _ in range(num_episodes):
             self.train_episode()
         
-        if self.successful_trajectory:
-            print(f"✅ Trajectory saved with {len(self.successful_trajectory)} steps")
+        if self.successful_trajectories:
+            best_traj = max(self.successful_trajectories, key=lambda x: x[0])[1]
+            print(f"✅ Example trajectory saved with {len(best_traj)} steps")
         else:
             print("❌ No successful trajectory found")
 
 
+
     def get_action_from_successful_trajectory(self):
-        if hasattr(self, "successful_trajectory") and self.steps < len(self.successful_trajectory):
-            step_data = self.successful_trajectory[self.steps]
+        if not self.successful_trajectories:
+            return None
 
-            # החזרת מיקומי המכוניות למצב שהיו בו בשלב הזה
+        if not self.replay_started:
+            # רק הגדר שהתחיל הREPLAY, הכל השאר כבר נעשה ב-run()
+            self.replay_started = True
+            self.steps = 0
+            return None
+
+        if self.steps < len(self.current_replay_trajectory):
+            step_data = self.current_replay_trajectory[self.steps]
             for i, pos in enumerate(step_data["cars"]):
-                self.moving_cars[i]["position"] = pos
-
-            self.steps += 1  # ⬅️ חשוב מאוד!
+                if i < len(self.moving_cars):
+                    self.moving_cars[i]["position"] = pos
             return step_data["action"]
+
         return None
+
+
+
 
 
 
