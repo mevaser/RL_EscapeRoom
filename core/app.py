@@ -44,8 +44,14 @@ class RLEscapeRoom:
 
         # Initialize Pygame window
         pygame.init()
-        self.window_size = 800
-        self.window = pygame.display.set_mode((self.window_size, self.window_size))
+        self.window_size = 640
+        self.grid_cell_size = self.window_size // 10  # assuming 10x10 grid
+        self.grid_height = self.grid_cell_size * 10
+        self.info_panel_height = 130
+        self.total_height = self.grid_height + self.info_panel_height
+
+        self.window = pygame.display.set_mode((self.window_size, self.total_height))
+
         pygame.display.set_caption("RL Escape Room")
         self.clock = pygame.time.Clock()
         self.font_large = pygame.font.Font(None, 48)

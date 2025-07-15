@@ -15,7 +15,7 @@ def draw_visualization_buttons(self, mouse_pos=None):
     max_panel_width = self.window_size - 40  # השארת שוליים
     button_width = 110
     spacing_x = 20
-    cols = 3
+    cols = 2
     rows = (len(button_defs) + cols - 1) // cols
 
     total_width = cols * button_width + (cols - 1) * spacing_x

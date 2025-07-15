@@ -2,6 +2,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 from typing import Tuple, Optional, Dict, Any
+from gymnasium.utils import seeding
 
 
 class GridWorldEnv(gym.Env):
@@ -66,10 +67,12 @@ class GridWorldEnv(gym.Env):
         return {"distance_to_goal": distance, "steps": self.steps}
 
     def reset(
-        self, seed: Optional[int] = None, options: Optional[Dict] = None
+        self, *, seed: Optional[int] = None, options: Optional[Dict] = None
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Reset the environment to initial state."""
-        super().reset(seed=seed)
+        # Ensure consistent seeding
+        if seed is not None:
+            self.np_random, _ = seeding.np_random(seed)
 
         # Initialize agent position (randomly, avoiding special tiles)
         valid_positions = [
@@ -80,29 +83,34 @@ class GridWorldEnv(gym.Env):
             and (x, y) not in self.special_tiles["goal"]
         ]
 
-        self.agent_position = self.np_random.choice(len(valid_positions))
-        self.agent_position = valid_positions[self.agent_position]
+        chosen_index = self.np_random.integers(0, len(valid_positions))
+        self.agent_position = valid_positions[chosen_index]
         self.steps = 0
         self.prison_countdown = 0
-
-        observation = self._get_obs()
-        info = self._get_info()
 
         self.collected_snitch = 0
         self.total_snitch = len(self.special_tiles["snitch"])
 
+        observation = self._get_obs()
+        info = self._get_info()
+
         return observation, info
 
-    def step(self, action: int) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
+    def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
         """Execute one time step within the environment."""
+        if self.agent_position is None:
+            raise RuntimeError("Environment must be reset before calling step()")
+
         self.steps += 1
+        terminated = False
+        truncated = False
 
         # If in prison, stay there and lose reward
         if self.prison_countdown > 0:
             self.prison_countdown -= 1
-            return self._get_obs(), -1.0, False, self._get_info()
+            return self._get_obs(), -1.0, terminated, truncated, self._get_info()
 
-        # Calculate new position
+        # Determine direction
         direction = {
             0: (-1, 0),  # LEFT
             1: (1, 0),  # RIGHT
@@ -115,31 +123,22 @@ class GridWorldEnv(gym.Env):
             self.agent_position[1] + direction[1],
         )
 
-        # Check if the move is valid
+        # Check if move is valid
         if (
             0 <= new_position[0] < self.size
             and 0 <= new_position[1] < self.size
             and new_position not in self.special_tiles["obstacles"]
         ):
-
             # Handle slippery tiles
             if self.agent_position in self.special_tiles["slippery"]:
-                if self.np_random.random() < 0.3:  # 30% chance to slip
-                    directions = [
-                        (-1, 0),
-                        (1, 0),
-                        (0, -1),
-                        (0, 1),
-                    ]  # All possible directions
-                    directions.remove(direction)  # Remove current direction
-                    slip_direction = self.np_random.choice(
-                        directions
-                    )  # Choose random direction
+                if self.np_random.random() < 0.3:
+                    directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+                    directions.remove(direction)
+                    slip_direction = self.np_random.choice(directions)
                     new_slip_position = (
                         self.agent_position[0] + slip_direction[0],
                         self.agent_position[1] + slip_direction[1],
                     )
-                    # Only apply slip if it's a valid move
                     if (
                         0 <= new_slip_position[0] < self.size
                         and 0 <= new_slip_position[1] < self.size
@@ -149,35 +148,33 @@ class GridWorldEnv(gym.Env):
 
             self.agent_position = new_position
 
-        # Check for special tiles
-        reward = -0.1  # Small negative reward for each step
-        terminated = False
+        # Check special tiles
+        reward = -0.1
 
         if self.agent_position in self.special_tiles["prison"]:
-            self.prison_countdown = 5  # Stuck for 5 steps
+            self.prison_countdown = 5
             reward = -5.0
 
-        # בדיקה אם השחקן דורך על snitch
         if self.agent_position in self.special_tiles["snitch"]:
             self.collected_snitch += 1
-            reward = 1.0  # אפשר לשחק עם גובה התגמול
+            reward = 1.0
             self.special_tiles["snitch"].remove(self.agent_position)
 
-        # בדיקה אם השחקן דורך על goal
         if self.agent_position in self.special_tiles["goal"]:
             if self.collected_snitch == self.total_snitch:
-                reward = 20.0  # פרס מוגבר להצלחה
+                reward = 20.0
                 terminated = True
             else:
-                reward = -5.0  # עונש חזק יותר על נסיון כושל
+                reward = -5.0
 
         if self.steps >= self.max_steps:
-            reward = -20.0  # עונש כבד על מריחה
-            terminated = True
+            reward = -20.0
+            truncated = True
 
         info = self._get_info()
-        info["timeout"] = self.steps >= self.max_steps and not terminated
-        return self._get_obs(), reward, terminated, info
+        info["timeout"] = truncated
+
+        return self._get_obs(), reward, terminated, truncated, info
 
     def add_special_tile(self, tile_type: str, position: Tuple[int, int]) -> None:
         """Add a special tile to the environment."""

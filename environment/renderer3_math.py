@@ -14,8 +14,8 @@ class GridWorldRenderer:
         background_path: Optional[str] = None,
     ):
         self.size = size
-        self.window_size = (window_size // size) * size  # Ensure divisible by grid size
-        self.cell_size = self.window_size // self.size
+        self.window_size = window_size
+        self.cell_size = window_size // size
         self.header_height = 0
         self.render_height = self.window_size
         self.total_height = self.render_height + self.header_height
@@ -64,15 +64,28 @@ class GridWorldRenderer:
         collected_shapes=None,
         current_task: Optional[str] = None,
     ) -> np.ndarray:
-        # Calculate grid area (leaving space for info panel at top)
-        grid_start_y = 130  # Leave 120 pixels at top for info panel
-        grid_size = self.window_size - grid_start_y
-        adjusted_cell_size = grid_size // self.size
 
+        if self.window is None:
+            raise ValueError(
+                "Renderer window is not initialized. Make sure to set it before calling render."
+            )
+
+        # === Unified layout setup ===
+        info_panel_height = int(self.window_size * 0.2)  # 20% מהמסך - כמו בשאר החדרים
+        grid_start_y = info_panel_height
+        adjusted_cell_size = self.window_size // self.size
+        grid_height = adjusted_cell_size * self.size
+        total_height = info_panel_height + grid_height
+
+        # === Draw background ===
         if self.background_image:
-            self.window.blit(self.background_image, (0, 0))
+            self.background_image = pygame.transform.smoothscale(
+                self.background_image, (self.window_size, grid_height)
+            )
+            self.window.blit(self.background_image, (0, grid_start_y))
         else:
-            self.window.fill(self.colors["background"])
+            grid_area = pygame.Rect(0, grid_start_y, self.window_size, grid_height)
+            pygame.draw.rect(self.window, self.colors["background"], grid_area)
 
         # Draw grid lines (adjusted for info panel)
         for i in range(self.size + 1):
@@ -90,18 +103,33 @@ class GridWorldRenderer:
                 (x_pos, self.window_size),
             )
 
+        # Draw grid lines (adjusted for info panel)
+        for i in range(self.size + 1):
+            # Horizontal lines
+            y = grid_start_y + i * adjusted_cell_size
+            pygame.draw.line(
+                self.window, self.colors["grid"], (0, y), (self.window_size, y)
+            )
+
+            # Vertical lines
+            x = i * adjusted_cell_size
+            pygame.draw.line(
+                self.window,
+                self.colors["grid"],
+                (x, grid_start_y),
+                (x, grid_start_y + grid_height),
+            )
+
         # Draw special tiles (adjusted for info panel)
         for tile_type, positions in special_tiles.items():
-            for pos in positions:
+            for idx, pos in enumerate(positions):
+                x_pix = pos[0] * adjusted_cell_size
+                y_pix = grid_start_y + pos[1] * adjusted_cell_size
+
                 if tile_type == "portal":
-                    # Draw portal as a circle with portal color
-                    center_x = pos[0] * adjusted_cell_size + adjusted_cell_size // 2
-                    center_y = (
-                        grid_start_y
-                        + pos[1] * adjusted_cell_size
-                        + adjusted_cell_size // 2
-                    )
-                    # Draw portal with bold purple color and white border
+                    center_x = x_pix + adjusted_cell_size // 2
+                    center_y = y_pix + adjusted_cell_size // 2
+
                     pygame.draw.circle(
                         self.window,
                         self.colors["portal"],
@@ -115,78 +143,51 @@ class GridWorldRenderer:
                         adjusted_cell_size // 3,
                         4,
                     )
-                    # Add inner circle for portal effect
                     pygame.draw.circle(
                         self.window,
                         (255, 255, 255),
                         (center_x, center_y),
                         adjusted_cell_size // 6,
                     )
-                    # Label P1/P2 with bold text
-                    label = "P1" if idx == 0 else "P2"
+
+                    label = f"P{(idx % 2) + 1}"
                     font = pygame.font.Font(None, adjusted_cell_size // 2)
                     text = font.render(label, True, (0, 0, 0))
                     text_rect = text.get_rect(center=(center_x, center_y))
                     self.window.blit(text, text_rect)
+
                 elif tile_type in ["red_button", "green_button"]:
-                    # Draw buttons as filled rectangles with button color
                     color = self.colors[tile_type]
-                    pygame.draw.rect(
-                        self.window,
-                        color,
-                        (
-                            pos[0] * adjusted_cell_size,
-                            grid_start_y + pos[1] * adjusted_cell_size,
-                            adjusted_cell_size,
-                            adjusted_cell_size,
-                        ),
-                        border_radius=8,
+                    rect = pygame.Rect(
+                        x_pix, y_pix, adjusted_cell_size, adjusted_cell_size
                     )
-                    # Add a border to make buttons more visible
-                    pygame.draw.rect(
-                        self.window,
-                        (0, 0, 0),
-                        (
-                            pos[0] * adjusted_cell_size,
-                            grid_start_y + pos[1] * adjusted_cell_size,
-                            adjusted_cell_size,
-                            adjusted_cell_size,
-                        ),
-                        2,
-                        border_radius=8,
-                    )
-                    # Draw icon/label
-                    font = pygame.font.Font(None, adjusted_cell_size // 2)
+                    pygame.draw.rect(self.window, color, rect, border_radius=8)
+                    pygame.draw.rect(self.window, (0, 0, 0), rect, 2, border_radius=8)
+
                     label = "R" if tile_type == "red_button" else "G"
+                    font = pygame.font.Font(None, adjusted_cell_size // 2)
                     text = font.render(label, True, (255, 255, 255))
-                    text_rect = text.get_rect(
-                        center=(
-                            pos[0] * adjusted_cell_size + adjusted_cell_size // 2,
-                            grid_start_y
-                            + pos[1] * adjusted_cell_size
-                            + adjusted_cell_size // 2,
-                        )
-                    )
+                    text_rect = text.get_rect(center=rect.center)
                     self.window.blit(text, text_rect)
+
                 else:
                     color = self.colors.get(tile_type, self.colors["grid"])
-                    tile_surface = pygame.Surface(
+                    surface = pygame.Surface(
                         (adjusted_cell_size, adjusted_cell_size), pygame.SRCALPHA
                     )
-                    tile_surface.fill((*color, 150))
-                    self.window.blit(
-                        tile_surface,
-                        (
-                            pos[0] * adjusted_cell_size,
-                            grid_start_y + pos[1] * adjusted_cell_size,
-                        ),
-                    )
+                    surface.fill((*color, 150))
+                    self.window.blit(surface, (x_pix, y_pix))
 
         # Draw shapes (adjusted for info panel)
+        # Use a single color for all shapes
+        shape_color = (0, 255, 255)  # Bright cyan
+        shadow_color = (0, 0, 0, 180)  # Semi-transparent black for shadow
+        offset = 2  # Shadow offset in pixels
+
         if shapes_positions:
             for shape, pos in shapes_positions.items():
                 if collected_shapes and shape in collected_shapes:
-                    continue  # Don't draw collected shapes
+                    continue  # Skip already collected shapes
 
                 center = (
                     pos[0] * adjusted_cell_size + adjusted_cell_size // 2,
@@ -194,17 +195,41 @@ class GridWorldRenderer:
                     + pos[1] * adjusted_cell_size
                     + adjusted_cell_size // 2,
                 )
-                color = (255, 255, 255)  # White
+
                 if shape == "circle":
+                    # Draw shadow
                     pygame.draw.circle(
-                        self.window, color, center, adjusted_cell_size // 3, width=4
+                        self.window,
+                        shadow_color,
+                        (center[0] + offset, center[1] + offset),
+                        adjusted_cell_size // 3,
                     )
+                    # Draw main shape
+                    pygame.draw.circle(
+                        self.window,
+                        shape_color,
+                        center,
+                        adjusted_cell_size // 3,
+                        width=4,
+                    )
+
                 elif shape == "square":
                     square_rect = pygame.Rect(
                         0, 0, adjusted_cell_size // 2, adjusted_cell_size // 2
                     )
                     square_rect.center = center
-                    pygame.draw.rect(self.window, color, square_rect, width=4)
+
+                    shadow_rect = square_rect.copy()
+                    shadow_rect.move_ip(offset, offset)
+
+                    # Draw shadow
+                    shadow_surface = pygame.Surface(square_rect.size, pygame.SRCALPHA)
+                    shadow_surface.fill(shadow_color)
+                    self.window.blit(shadow_surface, shadow_rect)
+
+                    # Draw main shape
+                    pygame.draw.rect(self.window, shape_color, square_rect, width=4)
+
                 elif shape == "triangle":
                     triangle = [
                         (center[0], center[1] - adjusted_cell_size // 3),
@@ -217,8 +242,13 @@ class GridWorldRenderer:
                             center[1] + adjusted_cell_size // 3,
                         ),
                     ]
-                    pygame.draw.polygon(self.window, color, triangle, width=4)
+                    shadow_triangle = [(x + offset, y + offset) for x, y in triangle]
 
+                    # Draw shadow
+                    pygame.draw.polygon(self.window, shadow_color, shadow_triangle)
+
+                    # Draw main shape
+                    pygame.draw.polygon(self.window, shape_color, triangle, width=4)
         # Draw agent (adjusted for info panel)
         scaled_agent = pygame.transform.scale(
             self.agent_image, (adjusted_cell_size, adjusted_cell_size)
@@ -234,7 +264,6 @@ class GridWorldRenderer:
         # Draw info panel above the grid
         if info:
             # Draw info panel background
-            info_panel_height = 100
             info_panel_rect = pygame.Rect(0, 0, self.window_size, info_panel_height)
             overlay_surface = pygame.Surface(
                 (self.window_size, info_panel_height), pygame.SRCALPHA
@@ -268,7 +297,6 @@ class GridWorldRenderer:
                 self.window.blit(text_surface, (x_offset, y_offset))
                 y_offset += 25
 
-        pygame.display.flip()
         self.clock.tick(4)
 
         return np.transpose(

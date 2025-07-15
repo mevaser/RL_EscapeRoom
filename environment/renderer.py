@@ -60,8 +60,14 @@ class GridWorldRenderer:
         self.background_path = background_path
         if self.background_path:
             self.background_image = pygame.image.load(self.background_path).convert()
+
+            grid_height = (
+                self.cell_size * self.size
+            )  # exact pixel height of the grid (not full window)
+
+            # Scale only to grid area, not the full window size
             self.background_image = pygame.transform.smoothscale(
-                self.background_image, (self.window_size, self.window_size)
+                self.background_image, (self.window_size, grid_height)
             )
         else:
             self.background_image = None
@@ -74,15 +80,31 @@ class GridWorldRenderer:
         moving_cars: Optional[list] = None,
         charging_cells: Optional[set] = None,
     ) -> np.ndarray:
-        # Calculate grid area (leaving space for info panel at top)
-        grid_start_y = 130  # Leave 120 pixels at top for info panel
-        grid_size = self.window_size - grid_start_y
-        adjusted_cell_size = grid_size // self.size
+        if self.window is None:
+            raise ValueError(
+                "Renderer window is not initialized. Make sure to set it before calling render."
+            )
 
-        # Draw info panel above the grid
+        # Fixed panel height at the top
+        info_panel_height = int(self.window_size * 0.2)  # 15% מהמסך
+
+        # Ensure square grid cells based on window width and number of cells
+        adjusted_cell_size = self.window_size // self.size
+
+        # Grid starts just below the info panel
+        grid_start_y = info_panel_height
+
+        # Actual height the grid will occupy (square grid!)
+        grid_height = adjusted_cell_size * self.size
+
+        # Adjust total window height accordingly
+        total_height = info_panel_height + grid_height
+
+        # Optional: If you're dynamically creating the window (once), set its height here
+        # self.window = pygame.display.set_mode((self.window_size, total_height))
+
+        # Draw info panel
         if info:
-            # Draw info panel background
-            info_panel_height = 130
             info_panel_rect = pygame.Rect(0, 0, self.window_size, info_panel_height)
             overlay_surface = pygame.Surface(
                 (self.window_size, info_panel_height), pygame.SRCALPHA
@@ -90,24 +112,17 @@ class GridWorldRenderer:
             overlay_surface.fill((255, 255, 255, 200))
             self.window.blit(overlay_surface, (0, 0))
 
-            # Calculate grid area (leaving space for info panel at top)
-            grid_start_y = info_panel_height  # Leave 120 pixels at top for info panel
-            grid_size = self.window_size - grid_start_y
-
-            # Draw info panel border
             pygame.draw.rect(self.window, (100, 100, 100), info_panel_rect, 2)
 
-            # Display info text
             y_offset = 15
             x_offset = 20
+
             for key, value in info.items():
                 if key not in ["snitch_collected", "snitch_total", "Training"]:
                     text = f"{key}: {value}"
                     text_surface = self.font.render(text, True, self.colors["text"])
                     self.window.blit(text_surface, (x_offset, y_offset))
                     y_offset += 25
-
-                    # Start new column if we've used half the width
                     if y_offset > info_panel_height - 25:
                         y_offset = 15
                         x_offset = self.window_size // 2 + 20
@@ -118,56 +133,54 @@ class GridWorldRenderer:
                 )
                 text_surface = self.font.render(snitch_text, True, self.colors["text"])
                 self.window.blit(text_surface, (x_offset, y_offset))
-                y_offset += 25
 
+        # Compute grid height based on adjusted_cell_size
+        grid_height = adjusted_cell_size * self.size
+
+        # Draw background only in the grid area (excluding info panel)
         if self.background_image:
-            # רקע יוצג רק באזור הגריד (לא כולל האינפו העליון)
-            grid_start_y = 130
-            grid_area = pygame.Rect(
-                0, grid_start_y, self.window_size, self.window_size - grid_start_y
-            )
-            self.window.blit(self.background_image, grid_area, area=grid_area)
+            # Just blit the scaled background image at the grid's starting Y
+            self.window.blit(self.background_image, (0, grid_start_y))
         else:
-            self.window.fill(self.colors["background"])
+            # Fill grid area with solid background color
+            background_rect = pygame.Rect(
+                0, grid_start_y, self.window_size, grid_height
+            )
+            pygame.draw.rect(self.window, self.colors["background"], background_rect)
 
-        # Draw grid lines (adjusted for info panel)
+        # Draw grid lines
         for i in range(self.size + 1):
             # Horizontal lines
-            y_pos = grid_start_y + i * adjusted_cell_size
+            y = grid_start_y + i * adjusted_cell_size
             pygame.draw.line(
-                self.window, self.colors["grid"], (0, y_pos), (self.window_size, y_pos)
+                self.window, self.colors["grid"], (0, y), (self.window_size, y)
             )
+
             # Vertical lines
-            x_pos = i * adjusted_cell_size
+            x = i * adjusted_cell_size
             pygame.draw.line(
                 self.window,
                 self.colors["grid"],
-                (x_pos, grid_start_y),
-                (x_pos, self.window_size),
+                (x, grid_start_y),
+                (x, grid_start_y + grid_height),
             )
 
         # Draw special tiles (adjusted for info panel)
         for tile_type, positions in special_tiles.items():
             for idx, pos in enumerate(positions):
+                x_pix = pos[0] * adjusted_cell_size
+                y_pix = grid_start_y + pos[1] * adjusted_cell_size
+
                 if tile_type == "snitch":
                     scaled_snitch = pygame.transform.scale(
                         self.snitch_image, (adjusted_cell_size, adjusted_cell_size)
                     )
-                    self.window.blit(
-                        scaled_snitch,
-                        (
-                            pos[0] * adjusted_cell_size,
-                            grid_start_y + pos[1] * adjusted_cell_size,
-                        ),
-                    )
+                    self.window.blit(scaled_snitch, (x_pix, y_pix))
+
                 elif tile_type == "portal":
-                    center_x = pos[0] * adjusted_cell_size + adjusted_cell_size // 2
-                    center_y = (
-                        grid_start_y
-                        + pos[1] * adjusted_cell_size
-                        + adjusted_cell_size // 2
-                    )
-                    # Draw portal with bold purple color and white border
+                    center_x = x_pix + adjusted_cell_size // 2
+                    center_y = y_pix + adjusted_cell_size // 2
+
                     pygame.draw.circle(
                         self.window,
                         self.colors["portal"],
@@ -181,103 +194,56 @@ class GridWorldRenderer:
                         adjusted_cell_size // 3,
                         4,
                     )
-                    # Add inner circle for portal effect
                     pygame.draw.circle(
                         self.window,
                         (255, 255, 255),
                         (center_x, center_y),
                         adjusted_cell_size // 6,
                     )
-                    # Label P1/P2 with bold text
-                    label = "P1" if idx == 0 else "P2"
+
+                    label = f"P{(idx % 2) + 1}"
                     font = pygame.font.Font(None, adjusted_cell_size // 2)
                     text = font.render(label, True, (0, 0, 0))
                     text_rect = text.get_rect(center=(center_x, center_y))
                     self.window.blit(text, text_rect)
+
                 elif tile_type in ["red_button", "green_button"]:
                     color = self.colors[tile_type]
-                    pygame.draw.rect(
-                        self.window,
-                        color,
-                        (
-                            pos[0] * adjusted_cell_size,
-                            grid_start_y + pos[1] * adjusted_cell_size,
-                            adjusted_cell_size,
-                            adjusted_cell_size,
-                        ),
-                        border_radius=8,
+                    rect = pygame.Rect(
+                        x_pix, y_pix, adjusted_cell_size, adjusted_cell_size
                     )
-                    pygame.draw.rect(
-                        self.window,
-                        (0, 0, 0),
-                        (
-                            pos[0] * adjusted_cell_size,
-                            grid_start_y + pos[1] * adjusted_cell_size,
-                            adjusted_cell_size,
-                            adjusted_cell_size,
-                        ),
-                        2,
-                        border_radius=8,
-                    )
-                    # Draw icon/label
-                    font = pygame.font.Font(None, adjusted_cell_size // 2)
-                    label = "R" if tile_type == "red_button" else "G"
-                    text = font.render(label, True, (255, 255, 255))
-                    text_rect = text.get_rect(
-                        center=(
-                            pos[0] * adjusted_cell_size + adjusted_cell_size // 2,
-                            grid_start_y
-                            + pos[1] * adjusted_cell_size
-                            + adjusted_cell_size // 2,
-                        )
-                    )
-                    self.window.blit(text, text_rect)
-                else:
-                    normalized_tile_type = tile_type.rstrip("s")
-                    color = self.colors.get(normalized_tile_type, self.colors["grid"])
+                    pygame.draw.rect(self.window, color, rect, border_radius=8)
+                    pygame.draw.rect(self.window, (0, 0, 0), rect, 2, border_radius=8)
 
-                    if normalized_tile_type in [
-                        "goal",
-                        "obstacle",
-                        "slippery",
-                        "prison",
-                    ]:
-                        surface = pygame.Surface(
-                            (adjusted_cell_size, adjusted_cell_size), pygame.SRCALPHA
-                        )
+                    label = "R" if tile_type == "red_button" else "G"
+                    font = pygame.font.Font(None, adjusted_cell_size // 2)
+                    text = font.render(label, True, (255, 255, 255))
+                    text_rect = text.get_rect(center=rect.center)
+                    self.window.blit(text, text_rect)
+
+                else:
+                    normalized_type = tile_type.rstrip("s")
+                    color = self.colors.get(normalized_type, self.colors["grid"])
+                    surface = pygame.Surface(
+                        (adjusted_cell_size, adjusted_cell_size), pygame.SRCALPHA
+                    )
+
+                    if normalized_type in ["goal", "obstacle", "slippery", "prison"]:
                         surface.fill((*color, 150))
-                        self.window.blit(
-                            surface,
-                            (
-                                pos[0] * adjusted_cell_size,
-                                grid_start_y + pos[1] * adjusted_cell_size,
-                            ),
-                        )
                     else:
-                        pygame.draw.rect(
-                            self.window,
-                            color,
-                            (
-                                pos[0] * adjusted_cell_size,
-                                grid_start_y + pos[1] * adjusted_cell_size,
-                                adjusted_cell_size,
-                                adjusted_cell_size,
-                            ),
-                        )
+                        surface.fill(color)
+
+                    self.window.blit(surface, (x_pix, y_pix))
 
         # Draw charging cells (adjusted for info panel)
         if charging_cells:
             for pos in charging_cells:
+                x_pix = pos[0] * adjusted_cell_size
+                y_pix = grid_start_y + pos[1] * adjusted_cell_size
                 scaled_battery = pygame.transform.scale(
                     self.battery_image, (adjusted_cell_size, adjusted_cell_size)
                 )
-                self.window.blit(
-                    scaled_battery,
-                    (
-                        pos[0] * adjusted_cell_size,
-                        grid_start_y + pos[1] * adjusted_cell_size,
-                    ),
-                )
+                self.window.blit(scaled_battery, (x_pix, y_pix))
 
         # Draw moving cars (adjusted for info panel)
         if moving_cars:
@@ -344,7 +310,7 @@ class GridWorldRenderer:
                 ),
             )
 
-        pygame.display.flip()
+        # pygame.display.flip()
         self.clock.tick(4)
 
         return np.transpose(

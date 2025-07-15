@@ -37,6 +37,8 @@ def save_agent_state(self, room_num):
             "qnetwork_target_state_dict": self.room.qnetwork_target.state_dict(),
             "epsilon": self.room.epsilon,
         }
+    else:
+        raise ValueError(f"Unsupported room number: {room_num}")
 
     # Save to disk
     with open(model_path, "wb") as f:

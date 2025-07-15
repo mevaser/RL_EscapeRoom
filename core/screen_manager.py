@@ -54,20 +54,27 @@ def show_train_run_choice(self):
     title_rect = title_text.get_rect(center=(self.window_size // 2, 150))
     self.window.blit(title_text, title_rect)
 
-    train_button = pygame.Rect(200, 300, 400, 80)
-    run_button = pygame.Rect(200, 450, 400, 80)
+    button_width = 400
+    button_height = 80
+    spacing = 30
+
+    center_x = (self.window_size - button_width) // 2
+    start_y = 280
+
+    train_button = pygame.Rect(center_x, start_y, button_width, button_height)
+    run_button = pygame.Rect(
+        center_x, start_y + button_height + spacing, button_width, button_height
+    )
 
     pygame.draw.rect(self.window, (0, 150, 0), train_button)
     pygame.draw.rect(self.window, (255, 255, 255), train_button, 3)
     train_text = self.font_medium.render("Train Agent", True, (255, 255, 255))
-    train_text_rect = train_text.get_rect(center=train_button.center)
-    self.window.blit(train_text, train_text_rect)
+    self.window.blit(train_text, train_text.get_rect(center=train_button.center))
 
     pygame.draw.rect(self.window, (150, 0, 0), run_button)
     pygame.draw.rect(self.window, (255, 255, 255), run_button, 3)
     run_text = self.font_medium.render("Run Agent", True, (255, 255, 255))
-    run_text_rect = run_text.get_rect(center=run_button.center)
-    self.window.blit(run_text, run_text_rect)
+    self.window.blit(run_text, run_text.get_rect(center=run_button.center))
 
     back_button = pygame.Rect(50, 50, 200, 50)
     pygame.draw.rect(self.window, (100, 100, 150), back_button)
@@ -75,8 +82,7 @@ def show_train_run_choice(self):
     back_text = self.font_small.render(
         "← Back to Room Selection", True, (255, 255, 255)
     )
-    back_text_rect = back_text.get_rect(center=back_button.center)
-    self.window.blit(back_text, back_text_rect)
+    self.window.blit(back_text, back_text.get_rect(center=back_button.center))
 
     self.train_run_buttons = [train_button, run_button, back_button]
     pygame.display.flip()
