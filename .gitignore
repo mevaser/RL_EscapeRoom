@@ -11,6 +11,30 @@ venv/
 
 # System files
 .DS_Store
+Thumbs.db
+
+# PyCharm project files
+.idea/
+
+# Pygame temporary files (optional, if exist)
+*.log
+*.tmp
 
 # Archives
 *.zip
+
+# Saved models and runtime artifacts
+saved_models/
+*.pkl
+
+# Optional: ignore screenshots or recordings
+*.png
+*.jpg
+*.mp4
+
+# Visual Studio Code / Visual Studio project settings
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
