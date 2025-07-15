@@ -2,10 +2,9 @@ import pygame
 
 
 def draw_visualization_buttons(self, mouse_pos=None):
-    """
-    Draws 2x2 buttons for visualizations (Policy, Q Map, Reward, Back to Menu),
-    centered in the top info panel.
-    """
+    """Draws visualization buttons for policy, Q-values, and training progress."""
+    button_defs = self.get_visualization_buttons()
+
     button_width = 110
     button_height = 30
     spacing_x = 20
@@ -13,17 +12,15 @@ def draw_visualization_buttons(self, mouse_pos=None):
     radius = 6
     font = self.font_small
 
-    button_defs = [
-        ("policy", "Policy", (255, 255, 255), (100, 150, 255), "View learned policy"),
-        ("qmap", "Q Map", (255, 255, 255), (150, 100, 255), "Q-value heatmap"),
-        ("reward", "Reward", (255, 255, 255), (255, 100, 150), "Reward graph"),
-        ("back", "↩ Menu", (255, 255, 255), (180, 180, 180), "Back to room menu"),
-    ]
+    max_panel_width = self.window_size - 40  # השארת שוליים
+    button_width = 110
+    spacing_x = 20
+    cols = 3
+    rows = (len(button_defs) + cols - 1) // cols
 
-    cols, rows = 2, 2
     total_width = cols * button_width + (cols - 1) * spacing_x
     start_x = (self.window_size - total_width) // 2
-    start_y = 15  # Info panel top offset
+    start_y = 15
 
     buttons = []
 
@@ -44,7 +41,6 @@ def draw_visualization_buttons(self, mouse_pos=None):
         self.window.blit(text, text.get_rect(center=rect.center))
 
         if is_hover:
-            # Tooltip
             tip_surf = font.render(tooltip, True, (255, 255, 255))
             tip_bg = pygame.Surface(
                 (tip_surf.get_width() + 10, tip_surf.get_height() + 6)
@@ -58,49 +54,51 @@ def draw_visualization_buttons(self, mouse_pos=None):
     return buttons
 
 
-def draw_back_and_stop_buttons(self, mouse_pos=None):
+def draw_back_button(self, mouse_pos=None):
     """
-    Draws the 'Back to Room Selection' and 'Stop Game' buttons on top-right.
+    Draws the 'Back to Room Selection' button on the top-right.
     """
-    button_width = 160
+    button_width = 180
     button_height = 38
     y = 30
-    spacing = 20
-    start_x = self.window_size - (button_width * 2 + spacing + 20)
+    x = self.window_size - button_width - 20
     font = self.font_small
 
-    back_rect = pygame.Rect(start_x, y, button_width, button_height)
-    stop_rect = pygame.Rect(
-        start_x + button_width + spacing, y, button_width, button_height
-    )
+    back_rect = pygame.Rect(x, y, button_width, button_height)
+    is_hover = mouse_pos and back_rect.collidepoint(mouse_pos)
 
-    is_hover_back = mouse_pos and back_rect.collidepoint(mouse_pos)
-    is_hover_stop = mouse_pos and stop_rect.collidepoint(mouse_pos)
-
-    # Back button
-    back_bg = (220, 220, 255) if is_hover_back else (200, 200, 240)
+    back_bg = (220, 220, 255) if is_hover else (200, 200, 240)
     pygame.draw.rect(self.window, back_bg, back_rect, border_radius=8)
     pygame.draw.rect(self.window, (0, 0, 0), back_rect, 2, border_radius=8)
     back_text = font.render("Back to Room Selection", True, (30, 30, 60))
     self.window.blit(back_text, back_text.get_rect(center=back_rect.center))
 
-    # Stop button
-    stop_bg = (255, 180, 180) if is_hover_stop else (255, 220, 220)
-    pygame.draw.rect(self.window, stop_bg, stop_rect, border_radius=8)
-    pygame.draw.rect(self.window, (0, 0, 0), stop_rect, 2, border_radius=8)
-    stop_text = font.render("Stop Game", True, (120, 60, 60))
-    self.window.blit(stop_text, stop_text.get_rect(center=stop_rect.center))
-
-    return back_rect, stop_rect
+    return back_rect
 
 
 def handle_visualization_click(self, button_type):
-    """
-    Respond to visualization button clicks by calling room plotting methods.
-    """
+    print(f"[DEBUG] Clicked button: {button_type}")
+
     if button_type == "policy" and hasattr(self.room, "plot_policy"):
+        print("[DEBUG] Executing: plot_policy")
         self.room.plot_policy()
     elif button_type == "qmap" and hasattr(self.room, "plot_q_values"):
+        print("[DEBUG] Executing: plot_q_values")
         self.room.plot_q_values()
+    elif button_type == "vmap" and hasattr(self.room, "plot_value_function"):
+        print("[DEBUG] Executing: plot_value_function")
+        self.room.plot_value_function()
     elif button_type == "reward" and hasattr(self.room, "plot_training_progress"):
+        print("[DEBUG] Executing: plot_training_progress")
         self.room.plot_training_progress()
+    elif button_type == "epsilon" and hasattr(self.room, "plot_epsilon_curve"):
+        print("[DEBUG] Executing: plot_epsilon_curve")
+        self.room.plot_epsilon_curve()
+    elif button_type == "success" and hasattr(self.room, "plot_success_rate"):
+        print("[DEBUG] Executing: plot_success_rate")
+        self.room.plot_success_rate()
+    elif button_type == "back":
+        print("[DEBUG] Executing: back to train_run_choice")
+        self.reset_room_state()
+        self.game_state = "train_run_choice"
+        self.exit_game_loop = True

@@ -17,7 +17,7 @@ from rooms.room4_dqn import DQNRoom
 
 
 def setup_room(self, room_num, action_mode):
-    """Setup the selected room with train or run mode"""
+    """Setup the selected room with the specified algorithm and mode (train/run)."""
     print(f"\nSetting up Room {room_num} in {action_mode} mode...")
 
     self.selected_room = room_num
@@ -28,7 +28,9 @@ def setup_room(self, room_num, action_mode):
         gamma, theta = get_dp_params()
         self.room = DPRoom(gamma=gamma, theta=theta)
         self.renderer = GridWorldRenderer(
-            background_path="assets/images/room1_background.jpg"
+            window=self.window,
+            window_size=self.window_size,
+            background_path="assets/images/room1_background.jpg",
         )
 
         if action_mode == "train":
@@ -38,7 +40,7 @@ def setup_room(self, room_num, action_mode):
             self.room.plot_policy()
             self.save_agent_state(room_num)
             print("Training complete! Press SPACE to see the agent move.")
-        else:  # run mode
+        else:
             if not self.load_agent_state(room_num):
                 self.show_not_trained_popup()
                 return False
@@ -49,12 +51,14 @@ def setup_room(self, room_num, action_mode):
         alpha, gamma, epsilon = get_sarsa_params()
         self.room = SARSARoom(alpha=alpha, gamma=gamma, epsilon=epsilon)
         self.renderer = GridWorldRenderer(
-            background_path="assets/images/room2_background.jpg"
+            window=self.window,
+            window_size=self.window_size,
+            background_path="assets/images/room2_background.jpg",
         )
 
         if action_mode == "train":
             self.training = True
-            print("\nTraining SARSA agent for 1000 episodes...")
+            print("Training SARSA agent for 1000 episodes...")
             self.room.train(num_episodes=1000)
             self.room.plot_training_progress()
             self.room.plot_q_values()
@@ -62,7 +66,7 @@ def setup_room(self, room_num, action_mode):
             self.training = False
             self.save_agent_state(room_num)
             print("Training complete! Press SPACE to see the agent move.")
-        else:  # run mode
+        else:
             if not self.load_agent_state(room_num):
                 self.show_not_trained_popup()
                 return False
@@ -79,18 +83,20 @@ def setup_room(self, room_num, action_mode):
             min_epsilon=min_epsilon,
         )
         self.renderer = MathRenderer(
-            background_path="assets/images/room3_background.jpg"
+            window=self.window,
+            window_size=self.window_size,
+            background_path="assets/images/room3_background.jpg",
         )
 
         if action_mode == "train":
             self.training = True
-            print("\nTraining Q-Learning agent for 1000 episodes...")
+            print("Training Q-Learning agent for 1000 episodes...")
             self.room.train(num_episodes=1000)
             self.room.plot_training_progress()
             self.training = False
             self.save_agent_state(room_num)
             print("Training complete! Press SPACE to see the agent move.")
-        else:  # run mode
+        else:
             if not self.load_agent_state(room_num):
                 self.show_not_trained_popup()
                 return False
@@ -121,12 +127,14 @@ def setup_room(self, room_num, action_mode):
         )
 
         self.renderer = GridWorldRenderer(
-            background_path="assets/images/room4_background.jpg"
+            window=self.window,
+            window_size=self.window_size,
+            background_path="assets/images/room4_background.jpg",
         )
 
         if action_mode == "train":
             self.training = True
-            print("\nTraining DQN agent for 2000 episodes...")
+            print("Training DQN agent for 2000 episodes...")
             self.room.train(num_episodes=2000)
             self.room.plot_training_progress()
             self.room.plot_q_values()
@@ -134,7 +142,7 @@ def setup_room(self, room_num, action_mode):
             self.training = False
             self.save_agent_state(room_num)
             print("Training complete! Press SPACE to see the agent move.")
-        else:  # run mode
+        else:
             if not self.load_agent_state(room_num):
                 self.show_not_trained_popup()
                 return False
@@ -206,8 +214,9 @@ def run_game_loop(self):
     running = True
     clock = pygame.time.Clock()
     summary = None  # Initialize summary variable
+    self.exit_game_loop = False
 
-    while running:
+    while running and not self.exit_game_loop:
         mouse_pos = pygame.mouse.get_pos()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -217,18 +226,11 @@ def run_game_loop(self):
                 viz_buttons = self.draw_visualization_buttons(mouse_pos)
                 for button_type, button_rect in viz_buttons:
                     if button_rect.collidepoint(event.pos):
+                        print(f"[DEBUG] Clicked button: {button_type}")
+
                         self.handle_visualization_click(button_type)
                         break
-                # Check back and stop button clicks
-                back_rect, stop_rect = self.draw_back_and_stop_buttons(mouse_pos)
-                if back_rect.collidepoint(event.pos):
-                    self.reset_room_state()
-                    self.game_state = "start_screen"
-                    return
-                if stop_rect.collidepoint(event.pos):
-                    summary = f"Agent stopped after {self.room.steps} steps."
-                    running = False
-                    break
+
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
@@ -343,7 +345,6 @@ def run_game_loop(self):
 
             # Draw UI buttons LAST (on top of everything) - ALWAYS draw them
             self.draw_visualization_buttons(mouse_pos)
-            self.draw_back_and_stop_buttons(mouse_pos)
 
             # Force display update to ensure buttons are visible
             pygame.display.flip()

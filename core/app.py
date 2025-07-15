@@ -5,7 +5,7 @@ from core.screen_manager import show_start_screen, show_train_run_choice
 from core.agent_state import save_agent_state, load_agent_state
 from core.button_manager import (
     draw_visualization_buttons,
-    draw_back_and_stop_buttons,
+    draw_back_button,
     handle_visualization_click,
 )
 from core.popup_manager import (
@@ -58,7 +58,7 @@ class RLEscapeRoom:
         self.save_agent_state = save_agent_state.__get__(self)
         self.load_agent_state = load_agent_state.__get__(self)
         self.draw_visualization_buttons = draw_visualization_buttons.__get__(self)
-        self.draw_back_and_stop_buttons = draw_back_and_stop_buttons.__get__(self)
+        self.draw_back_button = draw_back_button.__get__(self)
         self.handle_visualization_click = handle_visualization_click.__get__(self)
         self.show_not_trained_popup = show_not_trained_popup.__get__(self)
         self.show_room_completed_popup = show_room_completed_popup.__get__(self)
@@ -67,6 +67,59 @@ class RLEscapeRoom:
         self.reset_room_state = reset_room_state.__get__(self)
         self.capture_background_snapshot = capture_background_snapshot.__get__(self)
         self.run_game_loop = run_game_loop.__get__(self)
+
+    def get_visualization_buttons(self):
+        """Returns a list of visualization buttons with their properties."""
+        buttons = [
+            (
+                "policy",
+                "Policy",
+                (255, 255, 255),
+                (100, 150, 255),
+                "View learned policy",
+            ),
+            ("reward", "Reward", (255, 255, 255), (255, 100, 150), "Reward curve"),
+        ]
+
+        if hasattr(self.room, "plot_q_values"):
+            buttons.insert(
+                1,
+                ("qmap", "Q Map", (255, 255, 255), (150, 100, 255), "Q-value heatmap"),
+            )
+
+        if hasattr(self.room, "plot_value_function"):
+            buttons.insert(
+                1,
+                (
+                    "vmap",
+                    "V Map",
+                    (255, 255, 255),
+                    (100, 255, 200),
+                    "State value function",
+                ),
+            )
+
+        if hasattr(self.room, "plot_epsilon_curve"):
+            buttons.append(
+                (
+                    "epsilon",
+                    "Epsilon",
+                    (255, 255, 255),
+                    (100, 200, 255),
+                    "Epsilon decay curve",
+                )
+            )
+
+        if hasattr(self.room, "plot_success_rate"):
+            buttons.append(
+                ("success", "Success", (255, 255, 255), (120, 255, 120), "Success rate")
+            )
+
+        buttons.append(
+            ("back", "↩ Menu", (255, 255, 255), (180, 180, 180), "Back to room menu")
+        )
+
+        return buttons
 
     def run(self):
         """Main application loop for state transitions"""
