@@ -31,7 +31,7 @@ class GridWorldRenderer:
             "prison": (255, 0, 0),
             "portal": (153, 0, 255),
             "red_button": (255, 68, 68),
-            "green_button": (68, 255, 68),
+            "yellow_button": (255, 255, 0),
             "text": (0, 0, 0),
         }
 
@@ -61,7 +61,8 @@ class GridWorldRenderer:
         special_tiles: Dict[str, set],
         info: Optional[Dict] = None,
         shapes_positions=None,
-        collected_shapes=None,
+        collected_mask: Optional[int] = None,
+        shape_indices: Optional[Dict[str, int]] = None,
         current_task: Optional[str] = None,
     ) -> np.ndarray:
 
@@ -120,22 +121,27 @@ class GridWorldRenderer:
                 (x, grid_start_y + grid_height),
             )
 
-        # Draw special tiles (adjusted for info panel)
+        # --------------------------------------------------------------------
+        # Render special tiles (grid offset already accounted for)
+        # --------------------------------------------------------------------
         for tile_type, positions in special_tiles.items():
             for idx, pos in enumerate(positions):
                 x_pix = pos[0] * adjusted_cell_size
                 y_pix = grid_start_y + pos[1] * adjusted_cell_size
 
+                # --- portals --------------------------------------------------
                 if tile_type == "portal":
                     center_x = x_pix + adjusted_cell_size // 2
                     center_y = y_pix + adjusted_cell_size // 2
 
+                    # Outer filled circle
                     pygame.draw.circle(
                         self.window,
                         self.colors["portal"],
                         (center_x, center_y),
                         adjusted_cell_size // 3,
                     )
+                    # White ring
                     pygame.draw.circle(
                         self.window,
                         (255, 255, 255),
@@ -143,6 +149,7 @@ class GridWorldRenderer:
                         adjusted_cell_size // 3,
                         4,
                     )
+                    # Inner white dot
                     pygame.draw.circle(
                         self.window,
                         (255, 255, 255),
@@ -150,44 +157,51 @@ class GridWorldRenderer:
                         adjusted_cell_size // 6,
                     )
 
+                    # Portal label (“P1”, “P2”, …)
                     label = f"P{(idx % 2) + 1}"
                     font = pygame.font.Font(None, adjusted_cell_size // 2)
                     text = font.render(label, True, (0, 0, 0))
                     text_rect = text.get_rect(center=(center_x, center_y))
                     self.window.blit(text, text_rect)
 
-                elif tile_type in ["red_button", "green_button"]:
+                # --- yellow button -------------------------------------------
+                elif tile_type == "yellow_button":
                     color = self.colors[tile_type]
                     rect = pygame.Rect(
                         x_pix, y_pix, adjusted_cell_size, adjusted_cell_size
                     )
+
                     pygame.draw.rect(self.window, color, rect, border_radius=8)
                     pygame.draw.rect(self.window, (0, 0, 0), rect, 2, border_radius=8)
 
-                    label = "R" if tile_type == "red_button" else "G"
+                    label = "C"
                     font = pygame.font.Font(None, adjusted_cell_size // 2)
-                    text = font.render(label, True, (255, 255, 255))
+                    text = font.render(label, True, (0, 0, 0))
                     text_rect = text.get_rect(center=rect.center)
                     self.window.blit(text, text_rect)
 
+                # --- generic semi-transparent tiles (obstacles, slippery, …) --
                 else:
                     color = self.colors.get(tile_type, self.colors["grid"])
                     surface = pygame.Surface(
                         (adjusted_cell_size, adjusted_cell_size), pygame.SRCALPHA
                     )
-                    surface.fill((*color, 150))
+                    surface.fill((*color, 150))  # 150 = ~60 % opacity
                     self.window.blit(surface, (x_pix, y_pix))
 
-        # Draw shapes (adjusted for info panel)
-        # Use a single color for all shapes
-        shape_color = (0, 255, 255)  # Bright cyan
-        shadow_color = (0, 0, 0, 180)  # Semi-transparent black for shadow
-        offset = 2  # Shadow offset in pixels
+        # --------------------------------------------------------------------
+        # Draw shapes (diamonds, etc.) – single cyan outline + drop-shadow
+        # --------------------------------------------------------------------
+        shape_color = (0, 255, 255)  # bright cyan outline
+        shadow_color = (0, 0, 0, 180)  # semi-transparent black
+        shadow_offset = 2  # pixels
 
         if shapes_positions:
             for shape, pos in shapes_positions.items():
-                if collected_shapes and shape in collected_shapes:
-                    continue  # Skip already collected shapes
+                if collected_mask is not None and shape_indices is not None:
+                    shape_idx = shape_indices[shape]
+                    if collected_mask & (1 << shape_idx):
+                        continue  # skip shapes already collected
 
                 center = (
                     pos[0] * adjusted_cell_size + adjusted_cell_size // 2,
@@ -197,14 +211,14 @@ class GridWorldRenderer:
                 )
 
                 if shape == "circle":
-                    # Draw shadow
+                    # Shadow
                     pygame.draw.circle(
                         self.window,
                         shadow_color,
-                        (center[0] + offset, center[1] + offset),
+                        (center[0] + shadow_offset, center[1] + shadow_offset),
                         adjusted_cell_size // 3,
                     )
-                    # Draw main shape
+                    # Outline circle
                     pygame.draw.circle(
                         self.window,
                         shape_color,
@@ -220,14 +234,12 @@ class GridWorldRenderer:
                     square_rect.center = center
 
                     shadow_rect = square_rect.copy()
-                    shadow_rect.move_ip(offset, offset)
+                    shadow_rect.move_ip(shadow_offset, shadow_offset)
 
-                    # Draw shadow
                     shadow_surface = pygame.Surface(square_rect.size, pygame.SRCALPHA)
                     shadow_surface.fill(shadow_color)
                     self.window.blit(shadow_surface, shadow_rect)
 
-                    # Draw main shape
                     pygame.draw.rect(self.window, shape_color, square_rect, width=4)
 
                 elif shape == "triangle":
@@ -242,11 +254,20 @@ class GridWorldRenderer:
                             center[1] + adjusted_cell_size // 3,
                         ),
                     ]
-                    shadow_triangle = [(x + offset, y + offset) for x, y in triangle]
+                    # Shadow points
+                    shadow_triangle = [
+                        (x + shadow_offset, y + shadow_offset) for x, y in triangle
+                    ]
 
-                    # Draw main shape
+                    # Shadow (fills slightly larger area)
+                    pygame.draw.polygon(self.window, shadow_color, shadow_triangle)
+
+                    # Outline triangle
                     pygame.draw.polygon(self.window, shape_color, triangle, width=4)
-        # Draw agent (adjusted for info panel)
+
+        # --------------------------------------------------------------------
+        # Draw the agent sprite
+        # --------------------------------------------------------------------
         scaled_agent = pygame.transform.scale(
             self.agent_image, (adjusted_cell_size, adjusted_cell_size)
         )

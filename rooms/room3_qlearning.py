@@ -3,8 +3,7 @@ from typing import Optional, Dict, Tuple, Any
 import matplotlib.pyplot as plt
 from environment.grid_world import GridWorldEnv
 
-
-# Mapping from action index to (dx, dy) vector
+# Mapping from action index to (dx, dy) direction
 ACTION_TO_VECTOR = {
     0: (0, -1),  # LEFT
     1: (0, 1),  # RIGHT
@@ -15,7 +14,8 @@ ACTION_TO_VECTOR = {
 
 class QLearningRoom(GridWorldEnv):
     """
-    Room 3: Q-Learning with shapes task (collect shapes in order)
+    Room 3 — Q-Learning with an ordered-shape-collection task.
+    The agent must collect Circle → Square → Triangle and then reach the goal.
     """
 
     def __init__(
@@ -23,277 +23,328 @@ class QLearningRoom(GridWorldEnv):
         size: int = 10,
         alpha: float = 0.1,
         gamma: float = 0.99,
-        epsilon: float = 1,
+        epsilon: float = 1.0,
         epsilon_decay: float = 0.995,
         min_epsilon: float = 0.01,
     ):
-        """Initialize the Q-Learning room with shapes task."""
         super().__init__(size=size)
 
+        # Goal (appears only after all shapes are collected)
         self.goal_position = (9, 9)
         self.goal_active = False
 
-        # Define shapes positions (row, col)
-        self.shapes_positions = {"circle": (2, 3), "square": (5, 6), "triangle": (4, 2)}
-
-        self.shape_order = ["circle", "square", "triangle"]
-        self.current_stage = 0
-
-        self.collected_shapes = set()
+        # Shape locations (row, col) — order matters
+        self.shapes_positions = {
+            "circle": (2, 3),
+            "square": (5, 6),
+            "triangle": (4, 2),
+        }
+        self.shape_list = sorted(self.shapes_positions.items())
+        self.shape_indices = {name: i for i, (name, _) in enumerate(self.shape_list)}
+        self.num_shapes = len(self.shape_list)
+        self.full_shape_mask = (1 << self.num_shapes) - 1  # e.g. 0b111 for 3 shapes
 
         self._setup_room()
 
+        # Q-Learning hyper-parameters
         self.alpha = alpha
         self.gamma = gamma
         self.epsilon = epsilon
         self.epsilon_decay = epsilon_decay
         self.min_epsilon = min_epsilon
+
+        # Initialize Q-table: (x, y, mask) → Q-values for 4 actions
         self.Q = {
-            (x, y, stage): np.zeros(4)
+            (x, y, mask): np.zeros(4)
             for x in range(size)
             for y in range(size)
-            for stage in range(4)
+            for mask in range(1 << self.num_shapes)
         }
-        self.episode_rewards = []
+
+        self.epsilon_history = []  # track epsilon per episode
+        self.episode_rewards = []  # track reward per episode
         self.current_episode = 0
 
+    # --------------------------------------------------------------------- #
+    # Room layout
+    # --------------------------------------------------------------------- #
     def _setup_room(self):
-        """Setup the room with obstacles, goal, and shapes."""
-        # Add static obstacles to force path through green button
-        for x in [1, 2, 3, 4, 5, 6, 7, 8]:
-            if x != 8:
-                self.add_special_tile(
-                    "obstacles", (x, 7)
-                )  # Block row 7 except at (8,7)
-        for y in [2, 3, 4, 5, 6, 7, 8]:
-            if y != 1:
-                self.add_special_tile(
-                    "obstacles", (7, y)
-                )  # Block col 7 except at (7,1)
-        for x in [7, 8]:
-            for y in [1, 2]:
+        """Build static walls, slippery cells, prisons, buttons, and obstacles."""
+
+        # Store obstacles that will be removed upon yellow button press
+        self.button_removable_obstacles = set()
+
+        # Vertical wall at column 7 (except position (8, 7))
+        for x in range(1, 9):
+            if x != 8:  # leave (8, 7) open
+                pos = (x, 7)
+                self.add_special_tile("obstacles", pos)
+                self.button_removable_obstacles.add(pos)
+
+        # Horizontal wall at row 7 (except position (7, 1))
+        for y in range(3, 9):
+            if y != 1:  # leave (7, 1) open
+                pos = (7, y)
+                self.add_special_tile("obstacles", pos)
+                self.button_removable_obstacles.add(pos)
+
+        # Track if the button was already pressed
+        self.obstacles_removed = False
+
+        # Slippery tiles near the button
+        for x in (7, 8):
+            for y in (1, 2):
                 self.add_special_tile("slippery", (x, y))
-        self.add_special_tile("prison", (4, 7))
-        self.add_special_tile("prison", (7, 4))
 
-        # Add interactive buttons
-        self.red_button = (1, 8)  # Red button for adding obstacles
-        self.green_button = (8, 1)  # Green button for removing obstacles
-        self.add_special_tile("red_button", self.red_button)
-        self.add_special_tile("green_button", self.green_button)
+        # Prison cells
+        self.add_special_tile("prison", (4, 6))
+        self.add_special_tile("prison", (8, 4))
 
-        # Dynamic obstacles that can be added/removed
-        self.dynamic_obstacles = {(3, 3), (4, 4), (5, 5), (6, 6)}
-        self.obstacles_active = False
-
-    def reset(
-        self, *, seed: Optional[int] = None, options: Optional[Dict] = None
-    ) -> Tuple[np.ndarray, Dict[str, Any]]:
-        """Reset the environment to an initial state."""
-        obs, info = super().reset(seed=seed, options=options)
-        self.current_stage = 0
-        self.collected_shapes = set()
-        self.goal_active = False
-
-        if self.goal_position in self.special_tiles["goal"]:
-            self.special_tiles["goal"].remove(self.goal_position)
-
-        return obs, info
+        # Yellow button that removes specific obstacles
+        self.yellow_button = (6, 6)
+        self.add_special_tile("yellow_button", self.yellow_button)
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
-        """Execute one time step within the environment."""
+        """
+        Execute one action and return (obs, reward, terminated, truncated, info).
+        Includes task-specific reward shaping and button / shape handling.
+        """
         obs, reward, terminated, truncated, info = super().step(action)
         state = tuple(obs)
 
-        # Handle interactive buttons
-        if state == self.red_button and not self.obstacles_active:
-            for obstacle in self.dynamic_obstacles:
-                self.add_special_tile("obstacles", obstacle)
-            self.obstacles_active = True
-            reward += 1.0
-        elif state == self.green_button and self.obstacles_active:
-            for obstacle in list(self.dynamic_obstacles):
+        # ----------------------------------------------------------------- #
+        # 1. Yellow button: remove static and dynamic obstacles and give bonus
+        # ----------------------------------------------------------------- #
+        if state == self.yellow_button and self.obstacles_active:
+            # Remove static obstacles that block the path
+            for x in range(1, 9):
+                if x != 8:
+                    self.remove_special_tile("obstacles", (x, 7))
+            for y in range(2, 9):
+                if y != 1:
+                    self.remove_special_tile("obstacles", (7, y))
+
+            # Remove all removable obstacles
+            for obstacle in self.button_removable_obstacles:
                 self.remove_special_tile("obstacles", obstacle)
+
+            print(
+                f"[DEBUG] Removed {len(self.button_removable_obstacles)} obstacles via yellow button."
+            )
+
             self.obstacles_active = False
-            reward += 1.0
+            reward += 5.0  # Bonus for using the button
 
-        # Check if standing on shape
-        shape_here = None
-        for shape, pos in self.shapes_positions.items():
+        # ----------------------------------------------------------------- #
+        # 2. Shape collection logic
+        # ----------------------------------------------------------------- #
+        for shape_name, pos in self.shape_list:
             if state == pos:
-                shape_here = shape
-                break
-
-        if shape_here:
-            if self.current_stage < len(self.shape_order):
-                expected_shape = self.shape_order[self.current_stage]
-                if (
-                    shape_here == expected_shape
-                    and shape_here not in self.collected_shapes
-                ):
-                    reward += 3.0
-                    self.collected_shapes.add(shape_here)
-                    self.current_stage += 1
+                shape_idx = int(self.shape_indices[shape_name])
+                if not (self.collected_mask & (1 << shape_idx)):
+                    self.collected_mask |= 1 << shape_idx
+                    reward += 10.0  # New shape collected
                 else:
-                    reward -= 2.0  # פחות ענישה על צורה לא נכונה
-            else:
-                reward -= 2.0
+                    reward -= 0.05  # Penalty for revisiting
 
-        if self.current_stage == 3 and not self.goal_active:
+        # ----------------------------------------------------------------- #
+        # 3. Unlock the goal once all shapes are collected
+        # ----------------------------------------------------------------- #
+        if self.collected_mask == self.full_shape_mask and not self.goal_active:
             self.add_special_tile("goal", self.goal_position)
             self.goal_active = True
 
+        # ----------------------------------------------------------------- #
+        # 4. Goal handling
+        # ----------------------------------------------------------------- #
         if state == self.goal_position and self.goal_active:
-            reward += 10.0
+            reward += 15.0
             terminated = True
             info["success"] = True
+        elif state == self.goal_position:
+            reward -= 1.0  # Attempted to finish too early
+            info["success"] = False
         else:
             info["success"] = False
 
         return obs, reward, terminated, truncated, info
 
-    def get_q_state(self, state):
-        """Convert the state to a Q-learning state representation."""
-        return (int(state[0]), int(state[1]), int(self.current_stage))
+    # --------------------------------------------------------------------- #
+    # Q-Learning helpers
+    # --------------------------------------------------------------------- #
+    def get_q_state(self, state: Tuple[int, int]) -> Tuple[int, int, int]:
+        """Return the Q-table key (x, y, mask)."""
+        return (state[0], state[1], self.collected_mask)
 
     def get_action(self, state: Tuple[int, int], training: bool = True) -> int:
-        """Select an action based on the current state using epsilon-greedy policy."""
+        """
+        Epsilon-greedy choice.
+        During evaluation (training=False) epsilon is ignored.
+        """
         q_state = self.get_q_state(state)
+        if q_state not in self.Q:
+            self.Q[q_state] = np.zeros(4)
+
         if training and np.random.random() < self.epsilon:
             return int(np.random.choice(4))
         return int(np.argmax(self.Q[q_state]))
 
+    # --------------------------------------------------------------------- #
+    # Training loop
+    # --------------------------------------------------------------------- #
     def train_episode(self) -> float:
-        """Run a single training episode."""
+        """Run a single training episode and return the total reward."""
         obs, _ = self.reset()
         state = tuple(obs)
-        total_reward = 0
-        done = False
-        step_penalty = -0.05  # עונש מתון על כל צעד
-        max_steps_per_episode = 500
+        total_reward = 0.0
+        max_steps = 300
         steps = 0
-        info = {}
+        done = False
+        info: Dict[str, Any] = {}
 
         while not done:
             q_state = self.get_q_state(state)
+            if q_state not in self.Q:
+                self.Q[q_state] = np.zeros(4)
+
             action = self.get_action(state, training=True)
             next_obs, reward, terminated, truncated, info = self.step(action)
             next_state = tuple(next_obs)
-            steps += 1
-
-            # עונש צעד
-            reward += step_penalty
-            total_reward += reward
             next_q_state = self.get_q_state(next_state)
+            if next_q_state not in self.Q:
+                self.Q[next_q_state] = np.zeros(4)
 
-            # עדכון Q
+            total_reward += reward
+
+            # Standard Q-Learning update
             if not terminated:
-                self.Q[q_state][action] += self.alpha * (
-                    reward
-                    + self.gamma * np.max(self.Q[next_q_state])
-                    - self.Q[q_state][action]
-                )
+                td_target = reward + self.gamma * np.max(self.Q[next_q_state])
             else:
-                self.Q[q_state][action] += self.alpha * (
-                    reward - self.Q[q_state][action]
-                )
+                td_target = reward
+            td_error = td_target - self.Q[q_state][action]
+            self.Q[q_state][action] += self.alpha * td_error
 
             state = next_state
-            done = terminated or steps >= max_steps_per_episode
+            steps += 1
+            done = terminated or steps >= max_steps
 
-            # אם עברנו את מספר הצעדים, נכשל
-            if steps >= max_steps_per_episode and not terminated:
-                info["success"] = (
-                    False  # חובה להוסיף זאת כדי שהדגל לא יישאר True מתשובה קודמת
-                )
-
-        # ✅ לוג הצלחה או כישלון
-        if info.get("success", False):
-            print(f"✅ Success! Episode {self.current_episode}, Reward: {total_reward}")
-        else:
-            print(f"❌ Failed. Episode {self.current_episode}, Reward: {total_reward}")
-
+        # Book-keeping
         self.episode_rewards.append(total_reward)
-        self.current_episode += 1
         self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
-
+        self.epsilon_history.append(self.epsilon)
+        self.current_episode += 1
         return total_reward
 
     def train(self, num_episodes: int = 1500):
-        """Train the agent for a specified number of episodes."""
-        for _ in range(num_episodes):
-            self.train_episode()
+        """Train the agent and track reward/epsilon per episode for plotting."""
+        self.episode_rewards = []
+        self.epsilon_history = []
 
-        # Show results after training
+        for _ in range(num_episodes):
+            total_reward = self.train_episode()
+            self.episode_rewards.append(total_reward)
+            self.epsilon_history.append(self.epsilon)
+
+        # Display plots only once after training
         self.plot_training_progress()
         self.plot_epsilon_curve()
-        self.plot_policy_per_stage()
+        self.plot_policy()
         self.plot_q_values()
 
+    def reset(
+        self,
+        *,
+        seed: Optional[int] = None,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """
+        Reset the environment to the initial state, including agent location,
+        collected shapes, active obstacles, and goal availability.
+        """
+        # Reset base GridWorld state (agent position etc.)
+        obs, info = super().reset(seed=seed, options=options)
+
+        # Reset collected shapes bitmask
+        self.collected_mask = 0
+
+        # Remove goal if it was previously added
+        self.goal_active = False
+        if self.goal_position in self.special_tiles["goal"]:
+            self.special_tiles["goal"].remove(self.goal_position)
+
+        # Reset obstacles — ensure all removable ones are active again
+        for pos in self.button_removable_obstacles:
+            self.add_special_tile("obstacles", pos)
+
+        self.obstacles_active = True
+
+        return obs, info
+
+    # ------------------------------------------------------------------ #
+    # Plotting utilities
+    # ------------------------------------------------------------------ #
     def plot_training_progress(self):
-        """Plot the training progress over episodes."""
         plt.figure(figsize=(10, 5))
         plt.plot(self.episode_rewards)
         plt.title("Training Progress")
         plt.xlabel("Episode")
         plt.ylabel("Total Reward")
+        plt.grid(True)
         plt.show()
 
     def plot_epsilon_curve(self):
-        """Plot the epsilon decay curve."""
         plt.figure(figsize=(10, 5))
-        epsilons = [
-            max(self.min_epsilon, self.epsilon * (self.epsilon_decay**i))
-            for i in range(len(self.episode_rewards))
-        ]
-        plt.plot(epsilons)
-        plt.title("Epsilon Decay Over Episodes")
+        plt.plot(self.epsilon_history)
+        plt.title("Epsilon Decay")
         plt.xlabel("Episode")
         plt.ylabel("Epsilon")
         plt.grid(True)
         plt.show()
 
-    def plot_policy_per_stage(self):
-        """Plot the learned policy separately for each stage (0 to 3)."""
-        fig, axes = plt.subplots(2, 2, figsize=(16, 16))
-        stages = [0, 1, 2, 3]
+    def plot_policy(self, mask: int = 0):
+        """Plot the greedy policy for a given shape-collection bitmask."""
+        plt.figure(figsize=(8, 8))
+        X, Y = np.meshgrid(np.arange(self.size), np.arange(self.size))
+        U = np.zeros_like(X, dtype=float)
+        V = np.zeros_like(Y, dtype=float)
 
-        for i, stage in enumerate(stages):
-            ax = axes[i // 2, i % 2]
-            X, Y = np.meshgrid(np.arange(self.size), np.arange(self.size))
-            U, V = np.zeros((self.size, self.size)), np.zeros((self.size, self.size))
+        for x in range(self.size):
+            for y in range(self.size):
+                state = (x, y, mask)
+                if state not in self.Q:
+                    continue
+                action = np.argmax(self.Q[state])
+                if action == 0:  # up
+                    U[y, x], V[y, x] = 0, 1
+                elif action == 1:  # down
+                    U[y, x], V[y, x] = 0, -1
+                elif action == 2:  # left
+                    U[y, x], V[y, x] = -1, 0
+                elif action == 3:  # right
+                    U[y, x], V[y, x] = 1, 0
 
-            for x in range(self.size):
-                for y in range(self.size):
-                    state = (x, y, stage)
-                    if state in self.Q:
-                        best_action = np.argmax(self.Q[state])
-                        dx, dy = ACTION_TO_VECTOR[best_action]
-                        U[x, y] = dx
-                        V[x, y] = dy
-
-            ax.quiver(X, Y, U, V, scale=1, scale_units="xy")
-            ax.set_title(f"Learned Policy - Stage {stage}")
-            ax.invert_yaxis()
-            ax.set_xticks(np.arange(self.size))
-            ax.set_yticks(np.arange(self.size))
-            ax.grid(True)
-
-        plt.tight_layout()
+        plt.quiver(X, Y, U, V, angles="xy", scale_units="xy", scale=1, color="black")
+        plt.title(f"Greedy Policy (Mask = {mask})")
+        plt.xticks(np.arange(self.size))
+        plt.yticks(np.arange(self.size))
+        plt.xlim(-0.5, self.size - 0.5)
+        plt.ylim(-0.5, self.size - 0.5)
+        plt.grid(True)
+        plt.gca().set_aspect("equal")
         plt.show()
 
     def plot_q_values(self):
-        """Plot the maximum Q-value for each state."""
-        plt.figure(figsize=(10, 10))
+        """Heat-map of max-Q for each state (mask = 0)."""
         value_matrix = np.zeros((self.size, self.size))
         for x in range(self.size):
             for y in range(self.size):
-                state = (x, y, 3)  # Final stage - all shapes collected
-                if state in self.Q:
-                    value_matrix[x, y] = np.max(self.Q[state])
-                else:
-                    value_matrix[x, y] = np.nan
-        plt.imshow(value_matrix.T, origin="lower")
+                state = (x, y, 0)
+                value_matrix[x, y] = (
+                    np.max(self.Q[state]) if state in self.Q else np.nan
+                )
+
+        plt.figure(figsize=(8, 8))
+        plt.imshow(value_matrix.T, origin="lower", cmap="viridis")
         plt.colorbar(label="Max Q-Value")
-        plt.title("Q-Value Function (Stage 3)")
+        plt.title("Q-Value Surface (Mask = 0)")
         plt.show()

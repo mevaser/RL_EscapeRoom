@@ -92,8 +92,7 @@ def setup_room(self, room_num, action_mode):
         if action_mode == "train":
             self.training = True
             print("Training Q-Learning agent for 1000 episodes...")
-            self.room.train(num_episodes=1000)
-            self.room.plot_training_progress()
+            self.room.train(num_episodes=2000)
             self.training = False
             self.save_agent_state(room_num)
             print("Training complete! Press SPACE to see the agent move.")
@@ -170,12 +169,14 @@ def capture_background_snapshot(self):
     if self.selected_room == 3:
         task_text = "Squid Game Room: Collect Circle, then Square, then Triangle"
         snapshot = self.renderer.render_with_shapes(
-            self.room.agent_position,
-            self.room.special_tiles,
+            agent_position=self.room.agent_position,
+            special_tiles=self.room.special_tiles,
             shapes_positions=self.room.shapes_positions,
-            collected_shapes=self.room.collected_shapes,
+            collected_mask=self.room.collected_mask,
+            shape_indices=self.room.shape_indices,
             current_task=task_text,
         ).copy()
+
     elif self.selected_room == 2:
         snapshot = self.renderer.render(
             self.room.agent_position,
@@ -243,7 +244,15 @@ def run_game_loop(self):
                         action = self.room.policy[x, y, self.snitch_mask]
                     elif self.selected_room == 3:
                         state = tuple(self.room.agent_position)
+                        q_state = self.room.get_q_state(state)
                         action = self.room.get_action(state, training=False)
+                        print(
+                            f"[DEBUG] Room 3 - state: {state}, mask: {self.room.collected_mask}, q_state: {q_state}"
+                        )
+                        print(
+                            f"[DEBUG] Q-values: {self.room.Q.get(q_state)} | Action selected: {action}"
+                        )
+
                     elif self.selected_room == 4:
                         state = tuple(self.room.agent_position)
                         action = self.room.get_action(state, training=False)
@@ -304,15 +313,16 @@ def run_game_loop(self):
                 )
 
             elif self.selected_room == 3:
-                collected = len(self.room.collected_shapes)
+                collected = bin(self.room.collected_mask).count("1")
                 total = len(self.room.shapes_positions)
                 info_dict["Shapes"] = f"{collected}/{total}"
                 self.renderer.render_with_shapes(
-                    self.room.agent_position,
-                    self.room.special_tiles,
+                    agent_position=self.room.agent_position,
+                    special_tiles=self.room.special_tiles,
                     info=info_dict,
                     shapes_positions=self.room.shapes_positions,
-                    collected_shapes=self.room.collected_shapes,
+                    collected_mask=self.room.collected_mask,
+                    shape_indices=self.room.shape_indices,
                     current_task="shapes",
                 )
 

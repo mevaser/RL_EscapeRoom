@@ -29,7 +29,7 @@ class GridWorldRenderer:
             "prison": (255, 0, 0),
             "portal": (153, 0, 255),
             "red_button": (255, 68, 68),
-            "green_button": (68, 255, 68),
+            "yellow_button": (255, 255, 0),
             "text": (0, 0, 0),
         }
 
@@ -207,7 +207,7 @@ class GridWorldRenderer:
                     text_rect = text.get_rect(center=(center_x, center_y))
                     self.window.blit(text, text_rect)
 
-                elif tile_type in ["red_button", "green_button"]:
+                elif tile_type in ["red_button", "yellow_button"]:
                     color = self.colors[tile_type]
                     rect = pygame.Rect(
                         x_pix, y_pix, adjusted_cell_size, adjusted_cell_size

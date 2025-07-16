@@ -33,6 +33,7 @@ class GridWorldEnv(gym.Env):
             "goal": set(),
             "obstacles": set(),
             "snitch": set(),
+            "yellow_button": set(),
         }
 
         # Rendering configuration (used by external renderer)
