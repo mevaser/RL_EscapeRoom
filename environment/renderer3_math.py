@@ -244,9 +244,6 @@ class GridWorldRenderer:
                     ]
                     shadow_triangle = [(x + offset, y + offset) for x, y in triangle]
 
-                    # Draw shadow
-                    pygame.draw.polygon(self.window, shadow_color, shadow_triangle)
-
                     # Draw main shape
                     pygame.draw.polygon(self.window, shape_color, triangle, width=4)
         # Draw agent (adjusted for info panel)

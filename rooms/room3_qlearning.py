@@ -4,6 +4,15 @@ import matplotlib.pyplot as plt
 from environment.grid_world import GridWorldEnv
 
 
+# Mapping from action index to (dx, dy) vector
+ACTION_TO_VECTOR = {
+    0: (0, -1),  # LEFT
+    1: (0, 1),  # RIGHT
+    2: (-1, 0),  # UP
+    3: (1, 0),  # DOWN
+}
+
+
 class QLearningRoom(GridWorldEnv):
     """
     Room 3: Q-Learning with shapes task (collect shapes in order)
@@ -14,7 +23,7 @@ class QLearningRoom(GridWorldEnv):
         size: int = 10,
         alpha: float = 0.1,
         gamma: float = 0.99,
-        epsilon: float = 0.1,
+        epsilon: float = 1,
         epsilon_decay: float = 0.995,
         min_epsilon: float = 0.01,
     ):
@@ -98,17 +107,15 @@ class QLearningRoom(GridWorldEnv):
 
         # Handle interactive buttons
         if state == self.red_button and not self.obstacles_active:
-            # Activate dynamic obstacles
             for obstacle in self.dynamic_obstacles:
                 self.add_special_tile("obstacles", obstacle)
             self.obstacles_active = True
-            reward += 1.0  # Small reward for using the button
+            reward += 1.0
         elif state == self.green_button and self.obstacles_active:
-            # Remove ALL dynamic obstacles
             for obstacle in list(self.dynamic_obstacles):
                 self.remove_special_tile("obstacles", obstacle)
             self.obstacles_active = False
-            reward += 1.0  # Small reward for using the button
+            reward += 1.0
 
         # Check if standing on shape
         shape_here = None
@@ -128,9 +135,9 @@ class QLearningRoom(GridWorldEnv):
                     self.collected_shapes.add(shape_here)
                     self.current_stage += 1
                 else:
-                    reward -= 10.0
+                    reward -= 2.0  # פחות ענישה על צורה לא נכונה
             else:
-                reward -= 10.0
+                reward -= 2.0
 
         if self.current_stage == 3 and not self.goal_active:
             self.add_special_tile("goal", self.goal_position)
@@ -139,12 +146,15 @@ class QLearningRoom(GridWorldEnv):
         if state == self.goal_position and self.goal_active:
             reward += 10.0
             terminated = True
+            info["success"] = True
+        else:
+            info["success"] = False
 
         return obs, reward, terminated, truncated, info
 
     def get_q_state(self, state):
         """Convert the state to a Q-learning state representation."""
-        return (state[0], state[1], self.current_stage)
+        return (int(state[0]), int(state[1]), int(self.current_stage))
 
     def get_action(self, state: Tuple[int, int], training: bool = True) -> int:
         """Select an action based on the current state using epsilon-greedy policy."""
@@ -159,18 +169,25 @@ class QLearningRoom(GridWorldEnv):
         state = tuple(obs)
         total_reward = 0
         done = False
+        step_penalty = -0.05  # עונש מתון על כל צעד
+        max_steps_per_episode = 500
+        steps = 0
+        info = {}
 
         while not done:
             q_state = self.get_q_state(state)
             action = self.get_action(state, training=True)
             next_obs, reward, terminated, truncated, info = self.step(action)
             next_state = tuple(next_obs)
-            done = terminated
-            total_reward += reward
+            steps += 1
 
+            # עונש צעד
+            reward += step_penalty
+            total_reward += reward
             next_q_state = self.get_q_state(next_state)
 
-            if not done:
+            # עדכון Q
+            if not terminated:
                 self.Q[q_state][action] += self.alpha * (
                     reward
                     + self.gamma * np.max(self.Q[next_q_state])
@@ -182,10 +199,22 @@ class QLearningRoom(GridWorldEnv):
                 )
 
             state = next_state
+            done = terminated or steps >= max_steps_per_episode
+
+            # אם עברנו את מספר הצעדים, נכשל
+            if steps >= max_steps_per_episode and not terminated:
+                info["success"] = (
+                    False  # חובה להוסיף זאת כדי שהדגל לא יישאר True מתשובה קודמת
+                )
+
+        # ✅ לוג הצלחה או כישלון
+        if info.get("success", False):
+            print(f"✅ Success! Episode {self.current_episode}, Reward: {total_reward}")
+        else:
+            print(f"❌ Failed. Episode {self.current_episode}, Reward: {total_reward}")
 
         self.episode_rewards.append(total_reward)
         self.current_episode += 1
-        # Update epsilon after each episode
         self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
 
         return total_reward
@@ -194,6 +223,12 @@ class QLearningRoom(GridWorldEnv):
         """Train the agent for a specified number of episodes."""
         for _ in range(num_episodes):
             self.train_episode()
+
+        # Show results after training
+        self.plot_training_progress()
+        self.plot_epsilon_curve()
+        self.plot_policy_per_stage()
+        self.plot_q_values()
 
     def plot_training_progress(self):
         """Plot the training progress over episodes."""
@@ -216,4 +251,49 @@ class QLearningRoom(GridWorldEnv):
         plt.xlabel("Episode")
         plt.ylabel("Epsilon")
         plt.grid(True)
+        plt.show()
+
+    def plot_policy_per_stage(self):
+        """Plot the learned policy separately for each stage (0 to 3)."""
+        fig, axes = plt.subplots(2, 2, figsize=(16, 16))
+        stages = [0, 1, 2, 3]
+
+        for i, stage in enumerate(stages):
+            ax = axes[i // 2, i % 2]
+            X, Y = np.meshgrid(np.arange(self.size), np.arange(self.size))
+            U, V = np.zeros((self.size, self.size)), np.zeros((self.size, self.size))
+
+            for x in range(self.size):
+                for y in range(self.size):
+                    state = (x, y, stage)
+                    if state in self.Q:
+                        best_action = np.argmax(self.Q[state])
+                        dx, dy = ACTION_TO_VECTOR[best_action]
+                        U[x, y] = dx
+                        V[x, y] = dy
+
+            ax.quiver(X, Y, U, V, scale=1, scale_units="xy")
+            ax.set_title(f"Learned Policy - Stage {stage}")
+            ax.invert_yaxis()
+            ax.set_xticks(np.arange(self.size))
+            ax.set_yticks(np.arange(self.size))
+            ax.grid(True)
+
+        plt.tight_layout()
+        plt.show()
+
+    def plot_q_values(self):
+        """Plot the maximum Q-value for each state."""
+        plt.figure(figsize=(10, 10))
+        value_matrix = np.zeros((self.size, self.size))
+        for x in range(self.size):
+            for y in range(self.size):
+                state = (x, y, 3)  # Final stage - all shapes collected
+                if state in self.Q:
+                    value_matrix[x, y] = np.max(self.Q[state])
+                else:
+                    value_matrix[x, y] = np.nan
+        plt.imshow(value_matrix.T, origin="lower")
+        plt.colorbar(label="Max Q-Value")
+        plt.title("Q-Value Function (Stage 3)")
         plt.show()

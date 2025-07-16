@@ -41,7 +41,8 @@ def setup_room(self, room_num, action_mode):
             self.save_agent_state(room_num)
             print("Training complete! Press SPACE to see the agent move.")
         else:
-            if not self.load_agent_state(room_num):
+            # 👇 Pass greedy=True to force epsilon=0 during run
+            if not self.load_agent_state(room_num, greedy=True):
                 self.show_not_trained_popup()
                 return False
             print("Loaded trained agent. Press SPACE to see the agent move.")
@@ -147,6 +148,7 @@ def setup_room(self, room_num, action_mode):
                 self.show_not_trained_popup()
                 return False
             print("Loaded trained agent. Press SPACE to see the agent move.")
+            self.room.run_single_episode_for_replay()
 
     self.room.reset()
     self.snitch_mask = 0
@@ -227,7 +229,6 @@ def run_game_loop(self):
                 for button_type, button_rect in viz_buttons:
                     if button_rect.collidepoint(event.pos):
                         print(f"[DEBUG] Clicked button: {button_type}")
-
                         self.handle_visualization_click(button_type)
                         break
 
@@ -244,15 +245,14 @@ def run_game_loop(self):
                         state = tuple(self.room.agent_position)
                         action = self.room.get_action(state, training=False)
                     elif self.selected_room == 4:
-                        action = self.room.get_action_from_successful_trajectory()
-                        if action is None:
-                            continue
+                        state = tuple(self.room.agent_position)
+                        action = self.room.get_action(state, training=False)
                     else:
                         action = self.room.get_action(
                             self.room.agent_position, training=False
                         )
 
-                    obs, reward, terminated, info = self.room.step(action)
+                    obs, reward, terminated, truncated, info = self.room.step(action)
 
                     if info.get("timeout", False):
                         print("\nEpisode ended due to step limit (timeout).")
@@ -268,7 +268,7 @@ def run_game_loop(self):
                                 self.snitch_mask |= 1 << idx
 
                     if terminated and (
-                        self.selected_room != 4 or info.get("success") == True
+                        self.selected_room != 4 or info.get("success") is True
                     ):
                         print("\nGoal reached! 🎉")
                         self.show_room_completed_popup()
@@ -307,7 +307,6 @@ def run_game_loop(self):
                 collected = len(self.room.collected_shapes)
                 total = len(self.room.shapes_positions)
                 info_dict["Shapes"] = f"{collected}/{total}"
-
                 self.renderer.render_with_shapes(
                     self.room.agent_position,
                     self.room.special_tiles,
@@ -318,17 +317,6 @@ def run_game_loop(self):
                 )
 
             elif self.selected_room == 4:
-                if self.room.successful_trajectories and not hasattr(
-                    self.room, "current_replay_trajectory"
-                ):
-                    _, traj = random.choice(self.room.successful_trajectories)
-                    self.room.current_replay_trajectory = traj
-                    start_cars = traj[0]["cars"]
-                    for i, pos in enumerate(start_cars):
-                        if i < len(self.room.moving_cars):
-                            self.room.moving_cars[i]["position"] = pos
-                self.room.restore_initial_replay_state()
-
                 self.renderer.render(
                     self.room.agent_position,
                     self.room.special_tiles,
@@ -350,5 +338,6 @@ def run_game_loop(self):
             pygame.display.flip()
 
         clock.tick(60)
+
     if summary:
         self.show_summary_popup(summary)

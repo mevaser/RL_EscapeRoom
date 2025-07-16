@@ -47,7 +47,7 @@ def save_agent_state(self, room_num):
     print(f"✅ Agent state saved to {model_path}")
 
 
-def load_agent_state(self, room_num):
+def load_agent_state(self, room_num, greedy=True):
     """Load the trained agent state from disk."""
     model_path = f"saved_models/room{room_num}_agent.pkl"
 
@@ -71,7 +71,8 @@ def load_agent_state(self, room_num):
         self.room.qnetwork_target.load_state_dict(
             agent_state["qnetwork_target_state_dict"]
         )
-        self.room.epsilon = agent_state["epsilon"]
+        # 👇 Run mode: force epsilon to 0 for greedy policy
+        self.room.epsilon = 0.0 if greedy else agent_state["epsilon"]
 
     print(f"✅ Agent state loaded from {model_path}")
     return True
