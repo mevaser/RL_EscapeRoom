@@ -265,12 +265,16 @@ def run_game_loop(self):
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
+
                 elif event.key == pygame.K_h:
                     self.show_controls = not self.show_controls
+
                 elif event.key == pygame.K_SPACE and not self.training:
+                    # ----- 1. בחר פעולה לפי החדר -----
                     if self.selected_room == 1:
                         x, y = self.room.agent_position
                         action = self.room.policy[x, y, self.snitch_mask]
+
                     elif self.selected_room == 3:
                         state = tuple(self.room.agent_position)
                         q_state = self.room.get_q_state(state)
@@ -282,52 +286,39 @@ def run_game_loop(self):
                             f"[DEBUG] Q-values: {self.room.Q.get(q_state)} | Action selected: {action}"
                         )
 
-                    elif self.selected_room == 4:
+                    else:  # Room 2 or 4
                         state = tuple(self.room.agent_position)
                         action = self.room.get_action(state, training=False)
-                        obs, reward, terminated, truncated, info = self.room.step(
-                            action
-                        )
 
-                        print(
-                            f"[DQN] Action: {action}, Reward: {reward:.2f}, Success: {info.get('success')}"
-                        )
+                    # ----- 2. בצע את הצעד -----
+                    obs, reward, terminated, truncated, info = self.room.step(action)
+                    print(
+                        f"[STEP] Action: {action}, Reward: {reward:.2f}, Success: {info.get('success')}"
+                    )
 
-                        if info.get("timeout", False):
-                            print("\nEpisode ended due to step limit (timeout).")
+                    # ----- 3. טיפול ספציפי לחדרים -----
+                    if self.selected_room == 1:
+                        pos = tuple(self.room.agent_position)
+                        if (
+                            hasattr(self.room, "snitch_indices")
+                            and pos in self.room.snitch_indices
+                        ):
+                            idx = self.room.snitch_indices[pos]
+                            if not (self.snitch_mask & (1 << idx)):
+                                self.snitch_mask |= 1 << idx
 
-                        if terminated:
-                            print("\nGoal reached or collision occurred 🎯")
-                            self.show_room_completed_popup()
-                            running = False
-                            continue
+                    # ----- 4. הודעת סיום -----
+                    if info.get("timeout", False):
+                        print("\nEpisode ended due to step limit (timeout).")
 
-                    else:
-                        action = self.room.get_action(
-                            self.room.agent_position, training=False
-                        )
-                        obs, reward, terminated, truncated, info = self.room.step(
-                            action
-                        )
-
-                        if info.get("timeout", False):
-                            print("\nEpisode ended due to step limit (timeout).")
-
-                        if self.selected_room == 1:
-                            pos = tuple(self.room.agent_position)
-                            if (
-                                hasattr(self.room, "snitch_indices")
-                                and pos in self.room.snitch_indices
-                            ):
-                                idx = self.room.snitch_indices[pos]
-                                if not (self.snitch_mask & (1 << idx)):
-                                    self.snitch_mask |= 1 << idx
-
-                        if terminated and info.get("success") is True:
+                    if terminated:
+                        if info.get("success") is True:
                             print("\nGoal reached! 🎉")
-                            self.show_room_completed_popup()
-                            running = False
-                            continue
+                        else:
+                            print("\nTerminated without success.")
+                        self.show_room_completed_popup()
+                        running = False
+                        continue
 
                 elif event.key == pygame.K_r:
                     print("\nResetting room...")
