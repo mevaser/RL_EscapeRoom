@@ -176,7 +176,7 @@ def setup_room(self, room_num, action_mode):
                 self.show_not_trained_popup()
                 return False
             print("Loaded trained agent. Press SPACE to see the agent move.")
-            self.room.run_single_episode_for_replay()
+        # self.room.run_single_episode_for_replay()
 
     self.room.reset()
     self.snitch_mask = 0
@@ -285,33 +285,49 @@ def run_game_loop(self):
                     elif self.selected_room == 4:
                         state = tuple(self.room.agent_position)
                         action = self.room.get_action(state, training=False)
+                        obs, reward, terminated, truncated, info = self.room.step(
+                            action
+                        )
+
+                        print(
+                            f"[DQN] Action: {action}, Reward: {reward:.2f}, Success: {info.get('success')}"
+                        )
+
+                        if info.get("timeout", False):
+                            print("\nEpisode ended due to step limit (timeout).")
+
+                        if terminated:
+                            print("\nGoal reached or collision occurred 🎯")
+                            self.show_room_completed_popup()
+                            running = False
+                            continue
+
                     else:
                         action = self.room.get_action(
                             self.room.agent_position, training=False
                         )
+                        obs, reward, terminated, truncated, info = self.room.step(
+                            action
+                        )
 
-                    obs, reward, terminated, truncated, info = self.room.step(action)
+                        if info.get("timeout", False):
+                            print("\nEpisode ended due to step limit (timeout).")
 
-                    if info.get("timeout", False):
-                        print("\nEpisode ended due to step limit (timeout).")
+                        if self.selected_room == 1:
+                            pos = tuple(self.room.agent_position)
+                            if (
+                                hasattr(self.room, "snitch_indices")
+                                and pos in self.room.snitch_indices
+                            ):
+                                idx = self.room.snitch_indices[pos]
+                                if not (self.snitch_mask & (1 << idx)):
+                                    self.snitch_mask |= 1 << idx
 
-                    if self.selected_room == 1:
-                        pos = tuple(self.room.agent_position)
-                        if (
-                            hasattr(self.room, "snitch_indices")
-                            and pos in self.room.snitch_indices
-                        ):
-                            idx = self.room.snitch_indices[pos]
-                            if not (self.snitch_mask & (1 << idx)):
-                                self.snitch_mask |= 1 << idx
-
-                    if terminated and (
-                        self.selected_room != 4 or info.get("success") is True
-                    ):
-                        print("\nGoal reached! 🎉")
-                        self.show_room_completed_popup()
-                        running = False
-                        continue
+                        if terminated and info.get("success") is True:
+                            print("\nGoal reached! 🎉")
+                            self.show_room_completed_popup()
+                            running = False
+                            continue
 
                 elif event.key == pygame.K_r:
                     print("\nResetting room...")

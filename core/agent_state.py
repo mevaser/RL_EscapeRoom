@@ -71,6 +71,7 @@ def load_agent_state(self, room_num, greedy=True):
         self.room.qnetwork_target.load_state_dict(
             agent_state["qnetwork_target_state_dict"]
         )
+        self.room.qnetwork_local.eval()
         # 👇 Run mode: force epsilon to 0 for greedy policy
         self.room.epsilon = 0.0 if greedy else agent_state["epsilon"]
 

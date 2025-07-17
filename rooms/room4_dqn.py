@@ -239,10 +239,11 @@ class DQNRoom(GridWorldEnv):
     def get_action(self, state, training: bool = True) -> int:
         if training and random.random() < self.epsilon:
             return random.choice(range(self.action_size))
+        self.qnetwork_local.eval()
         with torch.no_grad():
             state_tensor = self.get_state_tensor(state)
-            action_values = self.qnetwork_local(state_tensor)
-            return int(np.argmax(action_values.numpy()))
+            q_values = self.qnetwork_local(state_tensor)
+            return int(np.argmax(q_values.numpy()))
 
     def train_step(self):
         if len(self.memory) < self.min_experiences:
@@ -376,31 +377,31 @@ class DQNRoom(GridWorldEnv):
         np.save("saved_models/room4_epsilons.npy", self.epsilon_history)
         print("💾 Saved training history: rewards and epsilon decay.")
 
-    def run_single_episode_for_replay(self):
-        """Run one episode using the trained agent and save it for replay."""
-        obs, _ = self.reset()
-        state = tuple(obs)
-        done = False
-        trajectory = []
+    # def run_single_episode_for_replay(self):
+    #     """Run one episode using the trained agent and save it for replay."""
+    #     obs, _ = self.reset()
+    #     state = tuple(obs)
+    #     done = False
+    #     trajectory = []
 
-        while not done:
-            action = self.get_action(state, training=False)
-            next_obs, reward, terminated, truncated, info = self.step(action)
-            next_state = tuple(next_obs)
+    #     while not done:
+    #         action = self.get_action(state, training=False)
+    #         next_obs, reward, terminated, truncated, info = self.step(action)
+    #         next_state = tuple(next_obs)
 
-            trajectory.append(
-                {
-                    "state": state,
-                    "action": action,
-                    "cars": info["cars_state"],
-                }
-            )
+    #         trajectory.append(
+    #             {
+    #                 "state": state,
+    #                 "action": action,
+    #                 "cars": info["cars_state"],
+    #             }
+    #         )
 
-            state = next_state
-            done = terminated
+    #         state = next_state
+    #         done = terminated
 
-        self.current_replay_trajectory = trajectory
-        print(f"🎬 Replay trajectory prepared with {len(trajectory)} steps.")
+    #     self.current_replay_trajectory = trajectory
+    #     print(f"🎬 Replay trajectory prepared with {len(trajectory)} steps.")
 
     def get_action_from_successful_trajectory(self):
         if not self.successful_trajectories:

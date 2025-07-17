@@ -75,15 +75,14 @@ class SARSARoom(GridWorldEnv):
             ):
                 self.charging_cells.add(cell)
 
-    def get_action(self, state: Tuple[int, int], training: bool = True) -> int:
-        """
-        Epsilon-greedy action selection.
-        - With probability ε: random action (exploration)
-        - With probability 1 - ε: greedy action (exploitation)
-        """
+    def get_action(self, state, training=True):
+        """Choose an action based on epsilon-greedy policy."""
         if training and np.random.random() < self.epsilon:
-            return int(np.random.choice(4))  # exploration
-        return int(np.argmax(self.Q[state]))  # exploitation
+            # During training: explore with probability epsilon
+            return np.random.choice(4)
+        else:
+            # During training (1 - epsilon) or during inference: exploit learned Q-values
+            return int(np.argmax(self.Q[state]))
 
     def train_episode(self) -> float:
         """
