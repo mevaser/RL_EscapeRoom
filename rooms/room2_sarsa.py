@@ -147,36 +147,29 @@ class SARSARoom(GridWorldEnv):
 
         models_dir = os.path.join(os.path.dirname(__file__), "..", "saved_models")
         os.makedirs(models_dir, exist_ok=True)
-        np.save(
-            os.path.join(models_dir, "room3_rewards.npy"),
-            np.array(self.episode_rewards),
-        )
-        print("[INFO] Saved episode rewards to saved_models/room3_rewards.npy")
+
+        save_path = os.path.join(models_dir, "room2_rewards.npy")
+        np.save(save_path, np.array(self.episode_rewards))
+
+        print("[INFO] Saved episode rewards to saved_models/room2_rewards.npy")
+        print(f"[DEBUG][SAVE] Saved {len(self.episode_rewards)} rewards to {save_path}")
+        print(f"[DEBUG][SAVE] Last 5 rewards: {self.episode_rewards[-5:]}")
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
-        """
-        Execute one time step.
-        • Adds battery logic and teleporters on top of GridWorldEnv.step()
-        • Terminates when goal is active and reached
-        """
-
-        # --- reward settings (easy to tweak) -------------------------------------
-        STEP_PENALTY = -0.05
+        # -------------------------------------------------------------------------
+        STEP_PENALTY = -1  # קל יותר
         BATTERY_REWARD = 10.0
-        GOAL_BONUS = 50.0
-        EARLY_EXIT_PENALTY = -5.0
-        TIMEOUT_PENALTY = -50.0
+        GOAL_BONUS = 60.0
+        EARLY_EXIT_PEN = -100.0
+        TIMEOUT_PENALTY = -100.0
         MAX_STEPS = 300
-
-        # --- base transition -----------------------------------------------------
-        obs, base_reward, terminated, truncated, info = super().step(action)
+        # -------------------------------------------------------------------------
+        obs, _, terminated, truncated, info = super().step(action)
         position = tuple(obs)
-
-        # Override base reward
         reward = STEP_PENALTY
         info["success"] = False
 
-        # --- teleporters ---------------------------------------------------------
+        # ---------- 1. Teleporters ------------------------------------------------
         if position == self.portal1:
             self.agent_position = self.portal2
             position = self.portal2
@@ -186,49 +179,58 @@ class SARSARoom(GridWorldEnv):
             position = self.portal1
             obs = np.array(position)
 
-        # --- battery collection --------------------------------------------------
+        # ---------- 2. Battery collection ----------------------------------------
         if position in self.charging_cells:
             reward += BATTERY_REWARD
             self.charging_cells.remove(position)
             self.collected_batteries.add(position)
 
-            # Activate goal once ALL batteries collected
-            if (not self.charging_cells) and ("goal" not in self.special_tiles):
+            # goal מופיע מיד אחרי הבטרייה הראשונה
+            if "goal" not in self.special_tiles:
                 self.add_special_tile("goal", self.goal_position)
                 print("[DEBUG] Goal activated")
 
-        # --- early-exit blocker --------------------------------------------------
         goal_is_active = "goal" in self.special_tiles
-        if position == self.goal_position and not goal_is_active:
-            reward += EARLY_EXIT_PENALTY
-            self.agent_position = self.start_position
-            obs = np.array(self.start_position)
-            position = self.start_position
 
-        # --- successful termination ----------------------------------------------
+        # ---------- 3. הגיע לשער לפני בטרייה → כשלון מיידי -----------------------
+        if position == self.goal_position and not goal_is_active:
+            reward += EARLY_EXIT_PEN
+            terminated = True  # ←  מסיים את האפיזודה
+            info["success"] = False
+            # אין reason להשאיר את השער על הלוח
+            self.special_tiles["goal"].clear()
+            print("[WARN] Early exit – no battery collected")
+            return obs, reward, terminated, truncated, info
+
+        # ---------- 4. הצלחה ------------------------------------------------------
         if position == self.goal_position and goal_is_active:
             reward += GOAL_BONUS
             terminated = True
             info["success"] = True
 
-        # --- safety cut-off ------------------------------------------------------
+        # ---------- 5. קאט-אוף ----------------------------------------------------
         if self.steps >= MAX_STEPS and not terminated:
             reward += TIMEOUT_PENALTY
             truncated = True
             info["timeout"] = True
 
+        self.last_reward = reward  # להצגה ב-UI
         return obs, reward, terminated, truncated, info
 
     def reset(self, *, seed=None, options=None):
         """Reset the environment to an initial state."""
         obs, info = super().reset(seed=seed, options=options)
         self.start_position = tuple(obs)
+        self.special_tiles["goal"].clear()
+
         self._place_charging_cells()
         self.collected_batteries.clear()
         return obs, info
 
     def plot_training_progress(self):
         """Plot the training progress over episodes."""
+        print(f"[DEBUG] Plotting {len(self.episode_rewards)} rewards")
+        plt.close("all")
         plt.figure(figsize=(10, 5))
         plt.plot(self.episode_rewards)
         plt.title("Training Progress")
@@ -279,13 +281,20 @@ class SARSARoom(GridWorldEnv):
         plt.title("Learned Policy")
         plt.show()
 
-    def load_rewards_from_file(self):
-        path = os.path.join(
-            os.path.dirname(__file__), "..", "saved_models", "room2_rewards.npy"
-        )
+    def load_rewards_from_file(self, path: str | None = None):
+        if path is None:
+            path = os.path.join(
+                os.path.dirname(__file__),  # ← מיקום הקובץ room2_sarsa.py
+                "..",  # ← חזרה לשורש הפרויקט
+                "saved_models",
+                "room2_rewards.npy",
+            )
+
         if os.path.exists(path):
-            self.episode_rewards = np.load(path).tolist()
-            print("[INFO] Loaded rewards from", path)
+            arr = np.load(path)
+            print(f"[DEBUG] Loaded {len(arr)} rewards from {path}")
+            print(f"[DEBUG] Last 5 rewards: {arr[-5:]}")
+            self.episode_rewards = arr.tolist()
         else:
-            print("[WARN] Reward file not found:", path)
+            print(f"[WARN] Reward file not found: {path}")
             self.episode_rewards = []

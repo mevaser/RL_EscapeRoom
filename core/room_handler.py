@@ -340,6 +340,10 @@ def run_game_loop(self):
                 "Training": self.training,
             }
 
+            # ✅ הוסף Reward אם קיים
+            if hasattr(self.room, "last_reward"):
+                info_dict["Reward"] = round(self.room.last_reward, 2)
+
             if self.selected_room == 1:
                 info_dict.update(
                     {
@@ -347,8 +351,13 @@ def run_game_loop(self):
                         "snitch_total": self.room.total_snitch,
                     }
                 )
+                self.renderer.render(
+                    self.room.agent_position,
+                    self.room.special_tiles,
+                    info=info_dict,
+                )
 
-            if self.selected_room == 2:
+            elif self.selected_room == 2:
                 info_dict["Batteries"] = len(self.room.collected_batteries)
                 self.renderer.render(
                     self.room.agent_position,
