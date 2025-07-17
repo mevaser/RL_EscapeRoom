@@ -2,6 +2,8 @@ import numpy as np
 from typing import Optional, Dict, Tuple, Any
 import matplotlib.pyplot as plt
 from environment.grid_world import GridWorldEnv
+import os
+
 
 # Mapping from action index to (dx, dy) direction
 ACTION_TO_VECTOR = {
@@ -302,8 +304,9 @@ class QLearningRoom(GridWorldEnv):
         plt.show()
 
     def plot_policy(self, mask: int = 0):
-        """Plot the greedy policy for a given shape-collection bitmask."""
-        plt.figure(figsize=(8, 8))
+        plt.figure(figsize=(7.5, 7.5))
+        ax = plt.gca()
+
         X, Y = np.meshgrid(np.arange(self.size), np.arange(self.size))
         U = np.zeros_like(X, dtype=float)
         V = np.zeros_like(Y, dtype=float)
@@ -323,14 +326,29 @@ class QLearningRoom(GridWorldEnv):
                 elif action == 3:  # right
                     U[y, x], V[y, x] = 1, 0
 
-        plt.quiver(X, Y, U, V, angles="xy", scale_units="xy", scale=1, color="black")
-        plt.title(f"Greedy Policy (Mask = {mask})")
-        plt.xticks(np.arange(self.size))
-        plt.yticks(np.arange(self.size))
-        plt.xlim(-0.5, self.size - 0.5)
-        plt.ylim(-0.5, self.size - 0.5)
-        plt.grid(True)
-        plt.gca().set_aspect("equal")
+        ax.quiver(
+            X,
+            Y,
+            U,
+            V,
+            angles="xy",
+            scale_units="xy",
+            scale=1,
+            color="black",
+            width=0.005,
+            headwidth=4,
+            headlength=5,
+        )
+
+        ax.set_title(f"Greedy Policy (Mask = {mask})")
+        ax.set_xlim(-0.5, self.size - 0.5)
+        ax.set_ylim(-0.5, self.size - 0.5)
+        ax.set_xticks(np.arange(self.size))
+        ax.set_yticks(np.arange(self.size))
+        ax.set_aspect("equal")
+        ax.grid(True)
+        plt.tight_layout(pad=1.0)
+        plt.subplots_adjust(left=0.08, right=0.92, top=0.92, bottom=0.08)
         plt.show()
 
     def plot_q_values(self):
@@ -348,3 +366,14 @@ class QLearningRoom(GridWorldEnv):
         plt.colorbar(label="Max Q-Value")
         plt.title("Q-Value Surface (Mask = 0)")
         plt.show()
+
+    def load_rewards_from_file(self):
+        path = os.path.join(
+            os.path.dirname(__file__), "..", "saved_models", "room3_rewards.npy"
+        )
+        if os.path.exists(path):
+            self.episode_rewards = np.load(path).tolist()
+            print("[INFO] Loaded rewards from", path)
+        else:
+            print("[WARN] Reward file not found:", path)
+            self.episode_rewards = []

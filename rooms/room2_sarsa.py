@@ -2,6 +2,8 @@ import numpy as np
 from typing import Dict, Tuple, List, Any
 import matplotlib.pyplot as plt
 from environment.grid_world import GridWorldEnv
+import json
+import os
 
 
 class SARSARoom(GridWorldEnv):
@@ -36,7 +38,7 @@ class SARSARoom(GridWorldEnv):
         self.current_episode = 0
 
     def _setup_room(self):
-        """Setup the room with obstacles, goal, and charging cells."""
+        """Setup the room with obstacles, prison, and teleport portals. Goal is added later."""
         for x in [2, 3, 4, 5]:
             self.add_special_tile("obstacles", (x, 4))
         for y in [1, 2, 3]:
@@ -44,13 +46,16 @@ class SARSARoom(GridWorldEnv):
         for x in [7, 8]:
             for y in [5, 6]:
                 self.add_special_tile("slippery", (x, y))
+
         self.add_special_tile("prison", (3, 7))
         self.add_special_tile("prison", (7, 2))
-        self.add_special_tile("goal", self.goal_position)
+
+        # 🚫 Goal will be added dynamically after collecting all batteries
+        # self.add_special_tile("goal", self.goal_position)
 
         # Add teleport portals
-        self.portal1 = (1, 2)  # row 1, column 2
-        self.portal2 = (8, 7)  # row 8, column 7
+        self.portal1 = (1, 2)
+        self.portal2 = (8, 7)
         self.add_special_tile("portal", self.portal1)
         self.add_special_tile("portal", self.portal2)
 
@@ -58,7 +63,10 @@ class SARSARoom(GridWorldEnv):
         """Place charging cells in the room."""
         self.charging_cells = set(self.fixed_charging_cells)
         while len(self.charging_cells) < 5:
-            cell = (np.random.randint(0, self.size), np.random.randint(0, self.size))
+            cell = (
+                np.random.randint(0, self.size),
+                np.random.randint(0, self.size),
+            )
             if (
                 cell not in self.special_tiles["obstacles"]
                 and cell not in self.special_tiles["goal"]
@@ -68,80 +76,154 @@ class SARSARoom(GridWorldEnv):
                 self.charging_cells.add(cell)
 
     def get_action(self, state: Tuple[int, int], training: bool = True) -> int:
-        """Select an action based on the current state using epsilon-greedy policy."""
+        """
+        Epsilon-greedy action selection.
+        - With probability ε: random action (exploration)
+        - With probability 1 - ε: greedy action (exploitation)
+        """
         if training and np.random.random() < self.epsilon:
-            return int(np.random.choice(4))
-        return int(np.random.choice(4))
+            return int(np.random.choice(4))  # exploration
+        return int(np.argmax(self.Q[state]))  # exploitation
 
     def train_episode(self) -> float:
-        """Run a single training episode."""
+        """
+        Run a single SARSA episode.
+        * epsilon-greedy policy
+        * SARSA update
+        * epsilon decay
+        * hard cap on steps to avoid infinite loops
+        """
         obs, _ = self.reset()
         state = tuple(obs)
-        total_reward = 0
+        total_reward = 0.0
 
         action = self.get_action(state, training=True)
         done = False
+        step_count = 0
+        max_steps = 500  # safety cap ─ prevents endless episodes
 
-        while not done:
+        while not done and step_count < max_steps:
+            # environment transition
             next_obs, reward, terminated, truncated, info = self.step(action)
             next_state = tuple(next_obs)
-            done = terminated
+            done = terminated  # episode ends only when terminated == True
             total_reward += reward
 
+            # choose next action (ε-greedy)
             next_action = self.get_action(next_state, training=True)
 
-            if not done:
-                self.Q[state][action] += self.alpha * (
-                    reward
-                    + self.gamma * self.Q[next_state][next_action]
-                    - self.Q[state][action]
-                )
-            else:
-                self.Q[state][action] += self.alpha * (reward - self.Q[state][action])
+            # SARSA update
+            target = reward
+            if not done:  # bootstrap if episode not finished
+                target += self.gamma * self.Q[next_state][next_action]
+            td_error = target - self.Q[state][action]
+            self.Q[state][action] += self.alpha * td_error
 
+            # move to next transition
             state = next_state
             action = next_action
+            step_count += 1
 
+        # keep track of episode statistics
         self.episode_rewards.append(total_reward)
         self.current_episode += 1
 
-        # prevent policy oscillation on goal
+        # epsilon decay (minimum 0.01)
+        self.epsilon = max(0.01, self.epsilon * 0.995)
+
+        # keep Q-values at goal zero to avoid oscillation
         self.Q[self.goal_position] = np.zeros(4)
 
         return total_reward
 
-    def train(self, num_episodes: int = 3000):
-        """Train the agent for a specified number of episodes."""
-        for _ in range(num_episodes):
-            self.train_episode()
+    def train(self, num_episodes: int = 2000):
+        self.episode_rewards = []
+        self.current_episode = 0
+
+        for i in range(num_episodes):
+            reward = self.train_episode()
+            print(
+                f"Episode {i + 1:>4}/{num_episodes} | Reward: {reward:6.2f} | Epsilon: {self.epsilon:.3f}"
+            )
+
+        models_dir = os.path.join(os.path.dirname(__file__), "..", "saved_models")
+        os.makedirs(models_dir, exist_ok=True)
+        np.save(
+            os.path.join(models_dir, "room3_rewards.npy"),
+            np.array(self.episode_rewards),
+        )
+        print("[INFO] Saved episode rewards to saved_models/room3_rewards.npy")
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
-        """Execute one time step within the environment."""
-        obs, reward, terminated, truncated, info = super().step(action)
+        """
+        Execute one time step.
+        • Adds battery logic and teleporters on top of GridWorldEnv.step()
+        • Terminates when goal is active and reached
+        """
+
+        # --- reward settings (easy to tweak) -------------------------------------
+        STEP_PENALTY = -0.05
+        BATTERY_REWARD = 10.0
+        GOAL_BONUS = 50.0
+        EARLY_EXIT_PENALTY = -5.0
+        TIMEOUT_PENALTY = -50.0
+        MAX_STEPS = 300
+
+        # --- base transition -----------------------------------------------------
+        obs, base_reward, terminated, truncated, info = super().step(action)
         position = tuple(obs)
 
-        # Handle teleportation
-        if position == self.portal1:
-            # Teleport to portal2
-            self.agent_position = self.portal2
-            obs = np.array(self.portal2)
-            position = tuple(obs)
-        elif position == self.portal2:
-            # Teleport to portal1
-            self.agent_position = self.portal1
-            obs = np.array(self.portal1)
-            position = tuple(obs)
+        # Override base reward
+        reward = STEP_PENALTY
+        info["success"] = False
 
+        # --- teleporters ---------------------------------------------------------
+        if position == self.portal1:
+            self.agent_position = self.portal2
+            position = self.portal2
+            obs = np.array(position)
+        elif position == self.portal2:
+            self.agent_position = self.portal1
+            position = self.portal1
+            obs = np.array(position)
+
+        # --- battery collection --------------------------------------------------
         if position in self.charging_cells:
-            reward += 5
+            reward += BATTERY_REWARD
             self.charging_cells.remove(position)
             self.collected_batteries.add(position)
+
+            # Activate goal once ALL batteries collected
+            if (not self.charging_cells) and ("goal" not in self.special_tiles):
+                self.add_special_tile("goal", self.goal_position)
+                print("[DEBUG] Goal activated")
+
+        # --- early-exit blocker --------------------------------------------------
+        goal_is_active = "goal" in self.special_tiles
+        if position == self.goal_position and not goal_is_active:
+            reward += EARLY_EXIT_PENALTY
+            self.agent_position = self.start_position
+            obs = np.array(self.start_position)
+            position = self.start_position
+
+        # --- successful termination ----------------------------------------------
+        if position == self.goal_position and goal_is_active:
+            reward += GOAL_BONUS
+            terminated = True
+            info["success"] = True
+
+        # --- safety cut-off ------------------------------------------------------
+        if self.steps >= MAX_STEPS and not terminated:
+            reward += TIMEOUT_PENALTY
+            truncated = True
+            info["timeout"] = True
 
         return obs, reward, terminated, truncated, info
 
     def reset(self, *, seed=None, options=None):
         """Reset the environment to an initial state."""
         obs, info = super().reset(seed=seed, options=options)
+        self.start_position = tuple(obs)
         self._place_charging_cells()
         self.collected_batteries.clear()
         return obs, info
@@ -197,3 +279,14 @@ class SARSARoom(GridWorldEnv):
         plt.gca().invert_yaxis()
         plt.title("Learned Policy")
         plt.show()
+
+    def load_rewards_from_file(self):
+        path = os.path.join(
+            os.path.dirname(__file__), "..", "saved_models", "room2_rewards.npy"
+        )
+        if os.path.exists(path):
+            self.episode_rewards = np.load(path).tolist()
+            print("[INFO] Loaded rewards from", path)
+        else:
+            print("[WARN] Reward file not found:", path)
+            self.episode_rewards = []

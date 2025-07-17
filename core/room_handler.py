@@ -49,7 +49,13 @@ def setup_room(self, room_num, action_mode):
 
     elif room_num == 2:
         print("Room 2 - SARSA (WALL-E Charging Room)")
-        alpha, gamma, epsilon = get_sarsa_params()
+
+        if action_mode == "train":
+            alpha, gamma, epsilon = get_sarsa_params()
+        else:
+            # Dummy values – not used in run mode
+            alpha = gamma = epsilon = 0
+
         self.room = SARSARoom(alpha=alpha, gamma=gamma, epsilon=epsilon)
         self.renderer = GridWorldRenderer(
             window=self.window,
@@ -71,11 +77,20 @@ def setup_room(self, room_num, action_mode):
             if not self.load_agent_state(room_num):
                 self.show_not_trained_popup()
                 return False
+            self.room.load_rewards_from_file()
+            self.room.plot_training_progress()
+
             print("Loaded trained agent. Press SPACE to see the agent move.")
 
     elif room_num == 3:
         print("Room 3 - Q-Learning (Squid Game)")
-        alpha, gamma, epsilon, epsilon_decay, min_epsilon = get_qlearning_params()
+
+        if action_mode == "train":
+            alpha, gamma, epsilon, epsilon_decay, min_epsilon = get_qlearning_params()
+        else:
+            # Dummy values – won't be used in run mode
+            alpha = gamma = epsilon = epsilon_decay = min_epsilon = 0
+
         self.room = QLearningRoom(
             alpha=alpha,
             gamma=gamma,
@@ -91,7 +106,7 @@ def setup_room(self, room_num, action_mode):
 
         if action_mode == "train":
             self.training = True
-            print("Training Q-Learning agent for 1000 episodes...")
+            print("Training Q-Learning agent for 2000 episodes...")
             self.room.train(num_episodes=2000)
             self.training = False
             self.save_agent_state(room_num)
@@ -100,20 +115,34 @@ def setup_room(self, room_num, action_mode):
             if not self.load_agent_state(room_num):
                 self.show_not_trained_popup()
                 return False
+            self.room.load_rewards_from_file()  # ⬅️ הוסף
+            self.room.plot_training_progress()
             print("Loaded trained agent. Press SPACE to see the agent move.")
 
     elif room_num == 4:
         print("Room 4 - DQN (Rush Hour)")
-        (
-            learning_rate,
-            gamma,
-            epsilon,
-            epsilon_decay,
-            min_epsilon,
-            batch_size,
-            tau,
-            hidden_size,
-        ) = get_dqn_params()
+
+        if action_mode == "train":
+            (
+                learning_rate,
+                gamma,
+                epsilon,
+                epsilon_decay,
+                min_epsilon,
+                batch_size,
+                tau,
+                hidden_size,
+            ) = get_dqn_params()
+        else:
+            # Use dummy but valid default values (same as in get_dqn_params or expected by model)
+            learning_rate = 1e-3
+            gamma = 0.99
+            epsilon = 1.0
+            epsilon_decay = 0.999
+            min_epsilon = 0.05
+            batch_size = 64
+            tau = 0.005
+            hidden_size = 64
 
         self.room = DQNRoom(
             learning_rate=learning_rate,
